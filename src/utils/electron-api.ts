@@ -14,6 +14,10 @@ export interface ElectronAPI {
   createTransaction: (transaction: any) => Promise<number>;
   
   calculateAutoSplit: (incomeAmount: number, scenarioId?: number) => Promise<any>;
+  
+  // V2: Deviation tracking
+  detectDeviations: (year: number, month: number) => Promise<any[]>;
+  acknowledgeDeviation: (goalId: number, year: number, month: number) => Promise<void>;
 }
 
 declare global {

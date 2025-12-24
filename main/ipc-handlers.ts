@@ -12,6 +12,7 @@ import {
   queryTransactions,
   insertTransaction,
   findIncomeScenarioById,
+  saveDatabaseToDisk,
 } from './database';
 
 // Goals
@@ -90,6 +91,11 @@ ipcMain.handle('create-transaction', async (_, transaction) => {
     transaction_type: transaction.transactionType,
     description: transaction.description || null,
     date: transaction.date || new Date().toISOString(),
+    deviation_type: transaction.deviationType || null,
+    planned_amount: transaction.plannedAmount || null,
+    actual_amount: transaction.actualAmount || transaction.amount,
+    acknowledged: transaction.acknowledged || false,
+    acknowledged_at: transaction.acknowledgedAt || null,
   });
 });
 
@@ -110,12 +116,26 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
   // Get all goals ordered by priority
   const goals = queryGoals();
   
+  // Helper function to check if a goal has started
+  const hasGoalStarted = (goal: any): boolean => {
+    if (!goal.start_date) return true; // No start date means it started immediately
+    const startDate = new Date(goal.start_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    return startDate.getTime() <= today.getTime();
+  };
+  
+  // Separate goals into active (started) and future (not started yet)
+  const activeGoals = goals.filter((g: any) => hasGoalStarted(g));
+  const futureGoals = goals.filter((g: any) => !hasGoalStarted(g));
+  
   // Calculate allocations
   const allocations: any[] = [];
   let remainingIncome = netIncome;
   
-  // V2: Emergency fund logic - first priority until filled
-  const emergencyFund = goals.find((g: any) => g.is_emergency_fund === true);
+  // V2: Emergency fund logic - first priority until filled (only if active)
+  const emergencyFund = activeGoals.find((g: any) => g.is_emergency_fund === true);
   
   if (emergencyFund) {
     // Calculate how much is needed to fill the emergency fund
@@ -154,10 +174,10 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
     // If emergency fund is already filled, skip it (treat as completed goal)
   }
   
-  // Allocate to other goals (excluding emergency fund if it was handled)
-  const regularGoals = goals.filter((g: any) => !g.is_emergency_fund);
+  // Allocate to ACTIVE regular goals first (excluding emergency fund if it was handled)
+  const activeRegularGoals = activeGoals.filter((g: any) => !g.is_emergency_fund);
   
-  for (const goal of regularGoals) {
+  for (const goal of activeRegularGoals) {
     if (remainingIncome <= 0) break;
     
     let allocation = 0;
@@ -166,7 +186,8 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
       allocation = Math.min(goal.monthly_contribution, remainingIncome);
     } else {
       // Calculate based on priority weight and deadline urgency
-      const totalPriority = regularGoals.reduce((sum: number, g: any) => sum + g.priority_weight, 0);
+      // Only consider active goals for priority distribution
+      const totalPriority = activeRegularGoals.reduce((sum: number, g: any) => sum + g.priority_weight, 0);
       if (totalPriority > 0) {
         const priorityRatio = goal.priority_weight / totalPriority;
         allocation = remainingIncome * priorityRatio * 0.5; // Use 50% of remaining for flexibility
@@ -184,6 +205,37 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
     }
   }
   
+  // Then allocate to FUTURE goals (only if there's remaining income after active goals)
+  const futureRegularGoals = futureGoals.filter((g: any) => !g.is_emergency_fund);
+  
+  for (const goal of futureRegularGoals) {
+    if (remainingIncome <= 0) break;
+    
+    let allocation = 0;
+    if (goal.monthly_contribution && goal.monthly_contribution > 0) {
+      // Fixed monthly contribution for future goals
+      allocation = Math.min(goal.monthly_contribution, remainingIncome);
+    } else {
+      // Calculate based on priority weight - only consider future goals for priority distribution
+      const totalPriority = futureRegularGoals.reduce((sum: number, g: any) => sum + g.priority_weight, 0);
+      if (totalPriority > 0) {
+        const priorityRatio = goal.priority_weight / totalPriority;
+        allocation = remainingIncome * priorityRatio * 0.5; // Use 50% of remaining for flexibility
+      }
+    }
+    
+    if (allocation > 0) {
+      allocations.push({
+        goalId: goal.id,
+        goalName: goal.name,
+        amount: allocation,
+        type: 'goal',
+        future: true // Mark as future goal for UI distinction
+      });
+      remainingIncome -= allocation;
+    }
+  }
+  
   return {
     grossIncome: incomeAmount,
     netIncome,
@@ -191,4 +243,97 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
     freeSpend: Math.max(0, remainingIncome),
     totalAllocated: netIncome - remainingIncome
   };
+});
+
+// V2: Deviation Detection
+ipcMain.handle('detect-deviations', async (_, year: number, month: number) => {
+  // Get all goals
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  
+  // Filter transactions for the specified month/year
+  const monthStart = new Date(year, month - 1, 1).toISOString();
+  const monthEnd = new Date(year, month, 0, 23, 59, 59).toISOString();
+  
+  const monthTransactions = transactions.filter(t => {
+    const txDate = new Date(t.date);
+    return txDate >= new Date(monthStart) && txDate <= new Date(monthEnd);
+  });
+  
+  const database = getDatabase();
+  const acknowledgedDeviations = database.acknowledged_deviations || [];
+  
+  const deviations: any[] = [];
+  
+  // Check each goal for deviations
+  for (const goal of goals) {
+    // Skip if goal hasn't started yet
+    const startDate = goal.start_date ? new Date(goal.start_date) : new Date();
+    const monthDate = new Date(year, month - 1, 1);
+    if (startDate > monthDate) continue;
+    
+    const plannedAmount = goal.monthly_contribution || 0;
+    if (plannedAmount === 0) continue; // No planned amount, skip
+    
+    // Calculate actual contributions for this goal in this month
+    const goalTransactions = monthTransactions.filter(t => 
+      t.goal_id === goal.id && 
+      (t.transaction_type === 'allocation' || t.transaction_type === 'income')
+    );
+    
+    const actualAmount = goalTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Check if this deviation is already acknowledged
+    const isAcknowledged = acknowledgedDeviations.some(
+      ad => ad.goalId === goal.id && ad.year === year && ad.month === month
+    );
+    
+    // Detect deviations
+    if (actualAmount < plannedAmount) {
+      const shortfall = plannedAmount - actualAmount;
+      let deviationType: string;
+      
+      if (actualAmount === 0) {
+        deviationType = 'missed_contribution';
+      } else {
+        deviationType = 'under_contribution';
+      }
+      
+      deviations.push({
+        goalId: goal.id,
+        goalName: goal.name,
+        type: deviationType,
+        date: monthStart,
+        plannedAmount,
+        actualAmount,
+        shortfall,
+        acknowledged: isAcknowledged,
+      });
+    }
+  }
+  
+  return deviations;
+});
+
+// Acknowledge a deviation
+ipcMain.handle('acknowledge-deviation', async (_, goalId: number, year: number, month: number) => {
+  const database = getDatabase();
+  if (!database.acknowledged_deviations) {
+    database.acknowledged_deviations = [];
+  }
+  
+  // Check if already acknowledged
+  const existing = database.acknowledged_deviations.find(
+    d => d.goalId === goalId && d.year === year && d.month === month
+  );
+  
+  if (!existing) {
+    database.acknowledged_deviations.push({
+      goalId,
+      year,
+      month,
+      acknowledgedAt: new Date().toISOString(),
+    });
+    saveDatabaseToDisk();
+  }
 });

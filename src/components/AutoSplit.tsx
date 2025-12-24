@@ -251,7 +251,19 @@ export function AutoSplit() {
                         <DollarSign size={20} style={{ color: '#007aff' }} />
                       )}
                       <div>
-                        <div style={{ fontWeight: 600 }}>{allocation.goalName}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {allocation.goalName}
+                          {allocation.future && (
+                            <span style={{ 
+                              fontSize: '0.75rem', 
+                              marginLeft: '0.5rem',
+                              color: '#8e8e93',
+                              fontStyle: 'italic'
+                            }}>
+                              (Future)
+                            </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>
                           {allocation.type === 'emergency' ? 'Emergency Fund (Priority)' : 'Goal Allocation'}
                         </div>

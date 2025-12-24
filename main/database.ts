@@ -34,6 +34,12 @@ interface Transaction {
   transaction_type: string;
   description: string | null;
   date: string;
+  // V2: Deviation tracking fields
+  deviation_type?: string | null;
+  planned_amount?: number | null;
+  actual_amount?: number | null;
+  acknowledged?: boolean;
+  acknowledged_at?: string | null;
 }
 
 interface Database {
@@ -43,6 +49,13 @@ interface Database {
   nextGoalId: number;
   nextScenarioId: number;
   nextTransactionId: number;
+  // V2: Store acknowledged deviations (goalId, year, month combinations)
+  acknowledged_deviations?: Array<{
+    goalId: number;
+    year: number;
+    month: number;
+    acknowledgedAt: string;
+  }>;
 }
 
 let db: Database | null = null;
@@ -77,6 +90,7 @@ export function initializeDatabase() {
   if (!database.nextGoalId) database.nextGoalId = 1;
   if (!database.nextScenarioId) database.nextScenarioId = 1;
   if (!database.nextTransactionId) database.nextTransactionId = 1;
+  if (!database.acknowledged_deviations) database.acknowledged_deviations = [];
   
   db = database;
   saveDatabase();
@@ -91,6 +105,7 @@ function createEmptyDatabase(): Database {
     nextGoalId: 1,
     nextScenarioId: 1,
     nextTransactionId: 1,
+    acknowledged_deviations: [],
   };
 }
 

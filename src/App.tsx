@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { GoalBuckets } from './components/GoalBuckets';
 import { IncomeSimulator } from './components/IncomeSimulator';
 import { AutoSplit } from './components/AutoSplit';
 import { Dashboard } from './components/Dashboard';
+import { Transactions } from './components/Transactions';
 import './App.css';
 
-type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split';
+import { Deviations } from './components/Deviations';
+
+type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -42,6 +45,18 @@ function App() {
           >
             Auto-Split
           </button>
+          <button
+            className={activeTab === 'transactions' ? 'active' : ''}
+            onClick={() => setActiveTab('transactions')}
+          >
+            Transactions
+          </button>
+          <button
+            className={activeTab === 'deviations' ? 'active' : ''}
+            onClick={() => setActiveTab('deviations')}
+          >
+            Deviations
+          </button>
         </nav>
       </header>
       <main className="app-main">
@@ -49,6 +64,8 @@ function App() {
         {activeTab === 'goals' && <GoalBuckets />}
         {activeTab === 'income' && <IncomeSimulator />}
         {activeTab === 'auto-split' && <AutoSplit />}
+        {activeTab === 'transactions' && <Transactions />}
+        {activeTab === 'deviations' && <Deviations />}
       </main>
     </div>
   );

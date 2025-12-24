@@ -5,14 +5,37 @@ import { electronAPI } from '../utils/electron-api';
 
 export function Dashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
 
   useEffect(() => {
     loadGoals();
+    loadTransactions();
   }, []);
 
   const loadGoals = async () => {
     const data = await electronAPI.getGoals();
     setGoals(data.map(transformGoal));
+  };
+
+  const loadTransactions = async () => {
+    const data = await electronAPI.getTransactions();
+    setTransactions(data);
+  };
+
+  // Calculate how much has been contributed to a goal in the current month
+  const getCurrentMonthContribution = (goalId: number): number => {
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+
+    const monthTransactions = transactions.filter(t => {
+      if (!t.goal_id || t.goal_id !== goalId) return false;
+      if (t.transaction_type !== 'allocation') return false;
+      const txDate = new Date(t.date);
+      return txDate >= monthStart && txDate <= monthEnd;
+    });
+
+    return monthTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
   };
 
   const transformGoal = (goal: any): Goal => ({
@@ -91,14 +114,19 @@ export function Dashboard() {
     .reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
 
   const urgentGoals = goals.filter(g => {
-    // Only consider goals that have started or are starting soon
+    // Only consider goals that have started
     if (!hasStarted(g)) {
-      const monthsUntilStart = calculateMonthsUntilStart(g);
-      return monthsUntilStart <= 1; // Starting within 1 month is urgent
+      return false; // Future goals are not urgent
     }
-    const monthsRemaining = calculateMonthsRemaining(g);
-    const required = calculateRequiredMonthlyIfStarted(g);
-    return monthsRemaining < 6 || required > (g.monthlyContribution || 0) * 1.2;
+    
+    // Check if goal needs contribution this month
+    const requiredMonthly = calculateRequiredMonthlyIfStarted(g);
+    if (requiredMonthly <= 0) return false; // Goal is complete or doesn't need anything
+    
+    const currentMonthContribution = getCurrentMonthContribution(g.id!);
+    
+    // Goal is urgent if it hasn't met its monthly requirement yet
+    return currentMonthContribution < requiredMonthly;
   });
 
   return (
@@ -161,9 +189,10 @@ export function Dashboard() {
               const requiredMonthly = calculateRequiredMonthly(goal);
               const goalStarted = hasStarted(goal);
               const monthsUntilStart = calculateMonthsUntilStart(goal);
-              const isUrgent = goalStarted 
-                ? (monthsRemaining < 6 || requiredMonthly > (goal.monthlyContribution || 0) * 1.2)
-                : monthsUntilStart <= 1;
+              const currentMonthContribution = goalStarted ? getCurrentMonthContribution(goal.id!) : 0;
+              
+              // Goal is urgent only if it has started and needs more contribution this month
+              const isUrgent = goalStarted && requiredMonthly > 0 && currentMonthContribution < requiredMonthly;
               
               return (
                 <div
@@ -254,12 +283,21 @@ export function Dashboard() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', fontSize: '0.875rem' }}>
                     <div>
-                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Current Contribution</div>
-                      <div style={{ fontWeight: 600 }}>₹{goal.monthlyContribution?.toLocaleString() || 0}/month</div>
+                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>This Month's Contribution</div>
+                      <div style={{ fontWeight: 600, color: goalStarted ? (currentMonthContribution > 0 ? '#34c759' : '#8e8e93') : '#8e8e93' }}>
+                        ₹{currentMonthContribution.toLocaleString()}
+                      </div>
+                      {goalStarted && requiredMonthly > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          {currentMonthContribution < requiredMonthly 
+                            ? `Needs ₹${(requiredMonthly - currentMonthContribution).toLocaleString()} more`
+                            : '✓ Monthly goal met'}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Required Monthly</div>
-                      <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
+                      <div style={{ fontWeight: 600, color: isUrgent ? '#ff3b30' : '#34c759' }}>
                         ₹{requiredMonthly.toLocaleString()}/month
                       </div>
                       {!goalStarted && goal.startDate && (

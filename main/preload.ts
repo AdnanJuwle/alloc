@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   calculateAutoSplit: (incomeAmount: number, scenarioId?: number) => 
     ipcRenderer.invoke('calculate-auto-split', incomeAmount, scenarioId),
+  
+  // V2: Deviation tracking
+  detectDeviations: (year: number, month: number) => ipcRenderer.invoke('detect-deviations', year, month),
+  acknowledgeDeviation: (goalId: number, year: number, month: number) => ipcRenderer.invoke('acknowledge-deviation', goalId, year, month),
 });
 
