@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Play, TrendingUp, DollarSign, Wallet } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Play, DollarSign, Wallet } from 'lucide-react';
 import { IncomeScenario, AutoSplitResult } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
 export function AutoSplit() {
   const [scenarios, setScenarios] = useState<IncomeScenario[]>([]);
-  const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null);
+  const [selectedScenarioIds, setSelectedScenarioIds] = useState<number[]>([]);
   const [incomeAmount, setIncomeAmount] = useState<number>(0);
   const [result, setResult] = useState<AutoSplitResult | null>(null);
   const [useScenario, setUseScenario] = useState(false);
@@ -16,22 +16,24 @@ export function AutoSplit() {
 
   const loadScenarios = async () => {
     const data = await electronAPI.getIncomeScenarios();
-    setScenarios(data.map((s: any) => ({
+    const mappedScenarios = data.map((s: any) => ({
       id: s.id,
       name: s.name,
       monthlyIncome: s.monthly_income,
       taxRate: s.tax_rate,
       fixedExpenses: s.fixed_expenses,
       scenarioType: s.scenario_type,
-    })));
+    }));
+    setScenarios(mappedScenarios);
     
     // Select first scenario by default if available
-    if (data.length > 0 && !selectedScenarioId) {
-      setSelectedScenarioId(data[0].id);
+    if (mappedScenarios.length > 0 && selectedScenarioIds.length === 0) {
+      setSelectedScenarioIds([mappedScenarios[0].id!]);
       setUseScenario(true);
-      setIncomeAmount(data[0].monthly_income);
+      setIncomeAmount(mappedScenarios[0].monthlyIncome);
     }
   };
+
 
   const handleCalculate = async () => {
     if (!incomeAmount || incomeAmount <= 0) {
@@ -39,12 +41,38 @@ export function AutoSplit() {
       return;
     }
 
-    const scenarioId = useScenario && selectedScenarioId ? selectedScenarioId : undefined;
-    const splitResult = await electronAPI.calculateAutoSplit(incomeAmount, scenarioId);
-    setResult(splitResult);
+    // If using scenarios, calculate net income from combined scenarios
+    if (useScenario && selectedScenarioIds.length > 0) {
+      const selectedScenarios = scenarios.filter(s => selectedScenarioIds.includes(s.id!));
+      // Sum incomes (already done in incomeAmount)
+      // Average tax rate (weighted by income would be better, but average is simpler)
+      const avgTaxRate = selectedScenarios.reduce((sum, s) => sum + s.taxRate, 0) / selectedScenarios.length;
+      // Sum fixed expenses (if you have multiple income sources, expenses are additive)
+      const totalFixedExpenses = selectedScenarios.reduce((sum, s) => sum + s.fixedExpenses, 0);
+      
+      // Calculate net income with combined values
+      const netIncome = incomeAmount * (1 - avgTaxRate / 100) - totalFixedExpenses;
+      
+      // Call calculate-auto-split with the net income as the income amount (no scenario)
+      // This works because the allocation logic only needs the net income to allocate from
+      const splitResult = await electronAPI.calculateAutoSplit(Math.max(0, netIncome), undefined);
+      
+      // Adjust result to show correct gross income
+      const adjustedResult = {
+        ...splitResult,
+        grossIncome: incomeAmount,
+        netIncome: netIncome,
+      };
+      
+      setResult(adjustedResult);
+    } else {
+      // No scenarios - just use income amount directly
+      const splitResult = await electronAPI.calculateAutoSplit(incomeAmount, undefined);
+      setResult(splitResult);
+    }
   };
 
-  const selectedScenario = scenarios.find(s => s.id === selectedScenarioId);
+  const selectedScenarios = scenarios.filter(s => selectedScenarioIds.includes(s.id!));
 
   return (
     <div>
@@ -55,41 +83,70 @@ export function AutoSplit() {
 
         <div style={{ marginBottom: '2rem' }}>
           <div className="form-group">
-            <label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0', width: 'fit-content', minWidth: '200px' }}>
               <input
                 type="checkbox"
                 checked={useScenario}
                 onChange={(e) => {
-                  setUseScenario(e.target.checked);
-                  if (e.target.checked && scenarios.length > 0) {
-                    const firstScenario = scenarios[0];
-                    setSelectedScenarioId(firstScenario.id!);
-                    setIncomeAmount(firstScenario.monthlyIncome);
+                  const checked = e.target.checked;
+                  setUseScenario(checked);
+                  if (checked && scenarios.length > 0) {
+                    // Select first scenario if none selected
+                    if (selectedScenarioIds.length === 0) {
+                      const firstScenario = scenarios[0];
+                      setSelectedScenarioIds([firstScenario.id!]);
+                      setIncomeAmount(firstScenario.monthlyIncome);
+                    }
+                  } else {
+                    // Clear selection when unchecking
+                    setSelectedScenarioIds([]);
                   }
                 }}
-                style={{ marginRight: '0.5rem' }}
               />
-              Use Income Scenario
+              <span style={{ whiteSpace: 'nowrap' }}>Use Income Scenarios</span>
             </label>
             {useScenario && scenarios.length > 0 && (
-              <select
-                value={selectedScenarioId || ''}
-                onChange={(e) => {
-                  const scenarioId = parseInt(e.target.value);
-                  setSelectedScenarioId(scenarioId);
-                  const scenario = scenarios.find(s => s.id === scenarioId);
-                  if (scenario) {
-                    setIncomeAmount(scenario.monthlyIncome);
-                  }
-                }}
-                style={{ marginTop: '0.5rem', width: '100%', padding: '0.75rem', border: '1px solid #d1d1d6', borderRadius: '8px' }}
-              >
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} (₹{s.monthlyIncome.toLocaleString()})
-                  </option>
-                ))}
-              </select>
+              <div style={{ marginTop: '0.75rem' }}>
+                <label style={{ fontSize: '0.875rem', fontWeight: 500, color: '#1d1d1f', marginBottom: '0.5rem', display: 'block' }}>
+                  Select scenarios:
+                </label>
+                <select
+                  multiple
+                  value={selectedScenarioIds.map(id => id.toString())}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+                    setSelectedScenarioIds(selected);
+                    if (selected.length > 0) {
+                      const selectedScenarios = scenarios.filter(s => selected.includes(s.id!));
+                      const totalIncome = selectedScenarios.reduce((sum, s) => sum + s.monthlyIncome, 0);
+                      setIncomeAmount(totalIncome);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: '1px solid #d1d1d6',
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    minHeight: '120px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {scenarios.map((scenario) => (
+                    <option key={scenario.id} value={scenario.id}>
+                      {scenario.name} (₹{scenario.monthlyIncome.toLocaleString()}, Tax: {scenario.taxRate}%, Fixed: ₹{scenario.fixedExpenses.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.5rem' }}>
+                  Hold Ctrl/Cmd to select multiple scenarios
+                </div>
+                {selectedScenarioIds.length > 0 && (
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#8e8e93' }}>
+                    {selectedScenarioIds.length} scenario{selectedScenarioIds.length !== 1 ? 's' : ''} selected • Total Income: ₹{incomeAmount.toLocaleString()}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -113,7 +170,7 @@ export function AutoSplit() {
           </button>
         </div>
 
-        {selectedScenario && useScenario && (
+        {selectedScenarios.length > 0 && useScenario && (
           <div style={{ 
             background: '#f5f5f7', 
             padding: '1rem', 
@@ -121,10 +178,16 @@ export function AutoSplit() {
             marginBottom: '1.5rem',
             fontSize: '0.875rem'
           }}>
-            <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Scenario Details:</div>
+            <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+              {selectedScenarios.length > 1 ? 'Combined Scenario Details:' : 'Scenario Details:'}
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <div>Tax Rate: {selectedScenario.taxRate}%</div>
-              <div>Fixed Expenses: ₹{selectedScenario.fixedExpenses.toLocaleString()}</div>
+              <div>
+                Avg Tax Rate: {(selectedScenarios.reduce((sum, s) => sum + s.taxRate, 0) / selectedScenarios.length).toFixed(1)}%
+              </div>
+              <div>
+                Total Fixed Expenses: ₹{selectedScenarios.reduce((sum, s) => sum + s.fixedExpenses, 0).toLocaleString()}
+              </div>
             </div>
           </div>
         )}
