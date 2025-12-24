@@ -19,6 +19,7 @@ export function Dashboard() {
     id: goal.id,
     name: goal.name,
     targetAmount: goal.target_amount,
+    startDate: goal.start_date || undefined,
     deadline: goal.deadline,
     priorityWeight: goal.priority_weight,
     monthlyContribution: goal.monthly_contribution,
@@ -31,27 +32,65 @@ export function Dashboard() {
     return goal.currentAmount ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
   };
 
-  const calculateMonthsRemaining = (deadline: string) => {
-    const deadlineDate = new Date(deadline);
+  const getEffectiveStartDate = (goal: Goal): Date => {
+    // If startDate is provided, use it; otherwise default to today
+    if (goal.startDate) {
+      return new Date(goal.startDate);
+    }
+    return new Date();
+  };
+
+  const hasStarted = (goal: Goal): boolean => {
+    const startDate = getEffectiveStartDate(goal);
     const today = new Date();
-    const diffTime = deadlineDate.getTime() - today.getTime();
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    return startDate.getTime() <= today.getTime();
+  };
+
+  const calculateMonthsRemaining = (goal: Goal) => {
+    const deadlineDate = new Date(goal.deadline);
+    const startDate = getEffectiveStartDate(goal);
+    const diffTime = deadlineDate.getTime() - startDate.getTime();
+    const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
+    return diffMonths > 0 ? diffMonths : 0;
+  };
+
+  const calculateMonthsUntilStart = (goal: Goal): number => {
+    const startDate = getEffectiveStartDate(goal);
+    const today = new Date();
+    const diffTime = startDate.getTime() - today.getTime();
     const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
     return diffMonths > 0 ? diffMonths : 0;
   };
 
   const calculateRequiredMonthly = (goal: Goal) => {
-    const monthsRemaining = calculateMonthsRemaining(goal.deadline);
+    // If goal hasn't started yet, return 0 (no monthly requirement until it starts)
+    if (!hasStarted(goal)) {
+      return 0;
+    }
+    const monthsRemaining = calculateMonthsRemaining(goal);
     const remaining = goal.targetAmount - (goal.currentAmount || 0);
     return monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
   };
 
   const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
   const totalCurrent = goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
-  const totalRequiredMonthly = goals.reduce((sum, g) => sum + calculateRequiredMonthly(g), 0);
-  const totalCurrentMonthly = goals.reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
+  // Only sum required monthly for goals that have started
+  const totalRequiredMonthly = goals
+    .filter(g => hasStarted(g))
+    .reduce((sum, g) => sum + calculateRequiredMonthly(g), 0);
+  const totalCurrentMonthly = goals
+    .filter(g => hasStarted(g))
+    .reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
 
   const urgentGoals = goals.filter(g => {
-    const monthsRemaining = calculateMonthsRemaining(g.deadline);
+    // Only consider goals that have started or are starting soon
+    if (!hasStarted(g)) {
+      const monthsUntilStart = calculateMonthsUntilStart(g);
+      return monthsUntilStart <= 1; // Starting within 1 month is urgent
+    }
+    const monthsRemaining = calculateMonthsRemaining(g);
     const required = calculateRequiredMonthly(g);
     return monthsRemaining < 6 || required > (g.monthlyContribution || 0) * 1.2;
   });
@@ -112,9 +151,13 @@ export function Dashboard() {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {goals.map((goal) => {
               const progress = calculateProgress(goal);
-              const monthsRemaining = calculateMonthsRemaining(goal.deadline);
+              const monthsRemaining = calculateMonthsRemaining(goal);
               const requiredMonthly = calculateRequiredMonthly(goal);
-              const isUrgent = monthsRemaining < 6 || requiredMonthly > (goal.monthlyContribution || 0) * 1.2;
+              const goalStarted = hasStarted(goal);
+              const monthsUntilStart = calculateMonthsUntilStart(goal);
+              const isUrgent = goalStarted 
+                ? (monthsRemaining < 6 || requiredMonthly > (goal.monthlyContribution || 0) * 1.2)
+                : monthsUntilStart <= 1;
               
               return (
                 <div
@@ -145,11 +188,26 @@ export function Dashboard() {
                           </span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#8e8e93' }}>
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#8e8e93', flexWrap: 'wrap' }}>
                         <span>Target: ₹{goal.targetAmount.toLocaleString()}</span>
+                        {goal.startDate && (
+                          <span>Starts: {new Date(goal.startDate).toLocaleDateString()}</span>
+                        )}
                         <span>Deadline: {new Date(goal.deadline).toLocaleDateString()}</span>
                         <span>Priority: {goal.priorityWeight}/10</span>
                       </div>
+                      {!goalStarted && goal.startDate && (
+                        <div style={{ 
+                          marginTop: '0.5rem', 
+                          padding: '0.5rem', 
+                          background: '#fff3cd', 
+                          borderRadius: '6px',
+                          fontSize: '0.875rem',
+                          color: '#856404'
+                        }}>
+                          ⏳ Starts saving in {monthsUntilStart} {monthsUntilStart === 1 ? 'month' : 'months'}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -179,13 +237,24 @@ export function Dashboard() {
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Required Monthly</div>
-                      <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
-                        ₹{requiredMonthly.toLocaleString()}/month
-                      </div>
+                      {goalStarted ? (
+                        <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
+                          ₹{requiredMonthly.toLocaleString()}/month
+                        </div>
+                      ) : (
+                        <div style={{ fontWeight: 600, color: '#8e8e93' }}>
+                          Not started yet
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Months Remaining</div>
+                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Savings Period</div>
                       <div style={{ fontWeight: 600 }}>{monthsRemaining} months</div>
+                      {goal.startDate && (
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          {goalStarted ? 'Started' : `Starts in ${monthsUntilStart} month${monthsUntilStart !== 1 ? 's' : ''}`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

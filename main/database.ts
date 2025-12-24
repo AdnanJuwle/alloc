@@ -6,6 +6,7 @@ interface Goal {
   id: number;
   name: string;
   target_amount: number;
+  start_date?: string; // Optional: when to start saving (defaults to today if not set)
   deadline: string;
   priority_weight: number;
   monthly_contribution: number;

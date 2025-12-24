@@ -2,6 +2,7 @@ export interface Goal {
   id?: number;
   name: string;
   targetAmount: number;
+  startDate?: string; // Optional: when to start saving (defaults to today if not set)
   deadline: string;
   priorityWeight: number;
   monthlyContribution?: number;

@@ -23,6 +23,7 @@ ipcMain.handle('create-goal', async (_, goal) => {
   return insertGoal({
     name: goal.name,
     target_amount: goal.targetAmount,
+    start_date: goal.startDate || undefined,
     deadline: goal.deadline,
     priority_weight: goal.priorityWeight || 5,
     monthly_contribution: goal.monthlyContribution || 0,
@@ -34,6 +35,7 @@ ipcMain.handle('update-goal', async (_, id, goal) => {
   updateGoal(id, {
     name: goal.name,
     target_amount: goal.targetAmount,
+    start_date: goal.startDate || undefined,
     deadline: goal.deadline,
     priority_weight: goal.priorityWeight,
     monthly_contribution: goal.monthlyContribution,

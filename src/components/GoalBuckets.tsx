@@ -10,6 +10,7 @@ export function GoalBuckets() {
   const [formData, setFormData] = useState<Partial<Goal>>({
     name: '',
     targetAmount: 0,
+    startDate: '',
     deadline: '',
     priorityWeight: 5,
     monthlyContribution: 0,
@@ -29,6 +30,7 @@ export function GoalBuckets() {
     id: goal.id,
     name: goal.name,
     targetAmount: goal.target_amount,
+    startDate: goal.start_date || undefined,
     deadline: goal.deadline,
     priorityWeight: goal.priority_weight,
     monthlyContribution: goal.monthly_contribution,
@@ -43,6 +45,7 @@ export function GoalBuckets() {
     const goalData = {
       name: formData.name!,
       targetAmount: parseFloat(formData.targetAmount as any),
+      startDate: formData.startDate || undefined,
       deadline: formData.deadline!,
       priorityWeight: formData.priorityWeight!,
       monthlyContribution: parseFloat(formData.monthlyContribution as any) || 0,
@@ -64,6 +67,7 @@ export function GoalBuckets() {
     setFormData({
       name: goal.name,
       targetAmount: goal.targetAmount,
+      startDate: goal.startDate || '',
       deadline: goal.deadline,
       priorityWeight: goal.priorityWeight,
       monthlyContribution: goal.monthlyContribution || 0,
@@ -85,6 +89,7 @@ export function GoalBuckets() {
     setFormData({
       name: '',
       targetAmount: 0,
+      startDate: '',
       deadline: '',
       priorityWeight: 5,
       monthlyContribution: 0,
@@ -96,16 +101,44 @@ export function GoalBuckets() {
     return goal.currentAmount ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
   };
 
-  const calculateMonthsRemaining = (deadline: string) => {
-    const deadlineDate = new Date(deadline);
+  const getEffectiveStartDate = (goal: Goal): Date => {
+    // If startDate is provided, use it; otherwise default to today
+    if (goal.startDate) {
+      return new Date(goal.startDate);
+    }
+    return new Date();
+  };
+
+  const hasStarted = (goal: Goal): boolean => {
+    const startDate = getEffectiveStartDate(goal);
     const today = new Date();
-    const diffTime = deadlineDate.getTime() - today.getTime();
+    today.setHours(0, 0, 0, 0);
+    startDate.setHours(0, 0, 0, 0);
+    return startDate.getTime() <= today.getTime();
+  };
+
+  const calculateMonthsRemaining = (goal: Goal) => {
+    const deadlineDate = new Date(goal.deadline);
+    const startDate = getEffectiveStartDate(goal);
+    const diffTime = deadlineDate.getTime() - startDate.getTime();
+    const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
+    return diffMonths > 0 ? diffMonths : 0;
+  };
+
+  const calculateMonthsUntilStart = (goal: Goal): number => {
+    const startDate = getEffectiveStartDate(goal);
+    const today = new Date();
+    const diffTime = startDate.getTime() - today.getTime();
     const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
     return diffMonths > 0 ? diffMonths : 0;
   };
 
   const calculateRequiredMonthly = (goal: Goal) => {
-    const monthsRemaining = calculateMonthsRemaining(goal.deadline);
+    // If goal hasn't started yet, return 0 (no monthly requirement until it starts)
+    if (!hasStarted(goal)) {
+      return 0;
+    }
+    const monthsRemaining = calculateMonthsRemaining(goal);
     const remaining = goal.targetAmount - (goal.currentAmount || 0);
     return monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
   };
@@ -130,8 +163,10 @@ export function GoalBuckets() {
           <div style={{ display: 'grid', gap: '1rem' }}>
             {goals.map((goal) => {
               const progress = calculateProgress(goal);
-              const monthsRemaining = calculateMonthsRemaining(goal.deadline);
+              const monthsRemaining = calculateMonthsRemaining(goal);
               const requiredMonthly = calculateRequiredMonthly(goal);
+              const goalStarted = hasStarted(goal);
+              const monthsUntilStart = calculateMonthsUntilStart(goal);
               
               return (
                 <div
@@ -148,20 +183,38 @@ export function GoalBuckets() {
                       <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.5rem' }}>
                         {goal.name}
                       </h3>
-                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#8e8e93' }}>
+                      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#8e8e93', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Target size={14} />
                           <span>₹{goal.targetAmount.toLocaleString()}</span>
                         </div>
+                        {goal.startDate && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <Calendar size={14} />
+                            <span>Starts: {new Date(goal.startDate).toLocaleDateString()}</span>
+                          </div>
+                        )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Calendar size={14} />
-                          <span>{new Date(goal.deadline).toLocaleDateString()}</span>
+                          <span>Deadline: {new Date(goal.deadline).toLocaleDateString()}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <TrendingUp size={14} />
                           <span>Priority: {goal.priorityWeight}/10</span>
                         </div>
                       </div>
+                      {!goalStarted && goal.startDate && (
+                        <div style={{ 
+                          marginTop: '0.5rem', 
+                          padding: '0.5rem', 
+                          background: '#fff3cd', 
+                          borderRadius: '6px',
+                          fontSize: '0.875rem',
+                          color: '#856404'
+                        }}>
+                          ⏳ Starts saving in {monthsUntilStart} {monthsUntilStart === 1 ? 'month' : 'months'}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button
@@ -207,13 +260,24 @@ export function GoalBuckets() {
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Required Monthly</div>
-                      <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
-                        ₹{requiredMonthly.toLocaleString()}/month
-                      </div>
+                      {goalStarted ? (
+                        <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
+                          ₹{requiredMonthly.toLocaleString()}/month
+                        </div>
+                      ) : (
+                        <div style={{ fontWeight: 600, color: '#8e8e93' }}>
+                          Not started yet
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Months Remaining</div>
+                      <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Savings Period</div>
                       <div style={{ fontWeight: 600 }}>{monthsRemaining} months</div>
+                      {goal.startDate && (
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          {goalStarted ? 'Started' : `Starts in ${monthsUntilStart} month${monthsUntilStart !== 1 ? 's' : ''}`}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Current Saved</div>
@@ -265,6 +329,18 @@ export function GoalBuckets() {
                     value={formData.deadline}
                     onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
                   />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Start Date (Optional)</label>
+                <input
+                  type="date"
+                  value={formData.startDate || ''}
+                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  placeholder="Leave empty to start saving from today"
+                />
+                <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                  When do you want to start saving for this goal? Leave empty to start immediately.
                 </div>
               </div>
               <div className="form-row">
