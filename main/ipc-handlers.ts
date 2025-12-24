@@ -28,6 +28,7 @@ ipcMain.handle('create-goal', async (_, goal) => {
     priority_weight: goal.priorityWeight || 5,
     monthly_contribution: goal.monthlyContribution || 0,
     current_amount: goal.currentAmount || 0,
+    is_emergency_fund: goal.isEmergencyFund || false,
   });
 });
 
@@ -40,6 +41,7 @@ ipcMain.handle('update-goal', async (_, id, goal) => {
     priority_weight: goal.priorityWeight,
     monthly_contribution: goal.monthlyContribution,
     current_amount: goal.currentAmount,
+    is_emergency_fund: goal.isEmergencyFund || false,
   });
 });
 
@@ -94,7 +96,7 @@ ipcMain.handle('create-transaction', async (_, transaction) => {
 // Auto-Split Logic
 ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
   // Get scenario if provided
-  let scenario = null;
+  let scenario: any = null;
   if (scenarioId) {
     scenario = findIncomeScenarioById(scenarioId);
   }
@@ -112,36 +114,63 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
   const allocations: any[] = [];
   let remainingIncome = netIncome;
   
-  // Emergency fund gets first cut (if exists and is high priority)
-  const emergencyFund = goals.find((g: any) => g.name.toLowerCase().includes('emergency'));
-  if (emergencyFund && emergencyFund.priority_weight >= 8) {
-    const emergencyAllocation = Math.min(emergencyFund.monthly_contribution || 0, remainingIncome * 0.1);
-    if (emergencyAllocation > 0) {
-      allocations.push({
-        goalId: emergencyFund.id,
-        goalName: emergencyFund.name,
-        amount: emergencyAllocation,
-        type: 'emergency'
-      });
-      remainingIncome -= emergencyAllocation;
+  // V2: Emergency fund logic - first priority until filled
+  const emergencyFund = goals.find((g: any) => g.is_emergency_fund === true);
+  
+  if (emergencyFund) {
+    // Calculate how much is needed to fill the emergency fund
+    const remainingToFill = emergencyFund.target_amount - (emergencyFund.current_amount || 0);
+    
+    if (remainingToFill > 0) {
+      // Emergency fund is not filled - allocate to it first
+      let emergencyAllocation = 0;
+      
+      // Check if monthly contribution is set (explicitly check for > 0)
+      const monthlyContribution = emergencyFund.monthly_contribution || 0;
+      const hasMonthlyContribution = monthlyContribution > 0;
+      
+      if (hasMonthlyContribution) {
+        // STRICT CAP: Emergency fund with monthly contribution - NEVER allocate more than monthly_contribution
+        // This ensures free spend is always available (unless monthly_contribution is larger than income)
+        emergencyAllocation = Math.min(
+          monthlyContribution,  // Hard cap: never exceed monthly contribution
+          remainingIncome       // Don't allocate more than available
+        );
+      } else {
+        // No monthly contribution specified - allocate all available until filled
+        emergencyAllocation = Math.min(remainingToFill, remainingIncome);
+      }
+      
+      if (emergencyAllocation > 0) {
+        allocations.push({
+          goalId: emergencyFund.id,
+          goalName: emergencyFund.name,
+          amount: emergencyAllocation,
+          type: 'emergency'
+        });
+        remainingIncome -= emergencyAllocation;
+      }
     }
+    // If emergency fund is already filled, skip it (treat as completed goal)
   }
   
-  // High priority goals get fixed amounts or percentages
-  for (const goal of goals) {
-    if (goal.id === emergencyFund?.id) continue; // Already handled
-    
+  // Allocate to other goals (excluding emergency fund if it was handled)
+  const regularGoals = goals.filter((g: any) => !g.is_emergency_fund);
+  
+  for (const goal of regularGoals) {
     if (remainingIncome <= 0) break;
     
     let allocation = 0;
-    if (goal.monthly_contribution) {
+    if (goal.monthly_contribution && goal.monthly_contribution > 0) {
       // Fixed monthly contribution
       allocation = Math.min(goal.monthly_contribution, remainingIncome);
     } else {
       // Calculate based on priority weight and deadline urgency
-      const totalPriority = goals.reduce((sum: number, g: any) => sum + g.priority_weight, 0);
-      const priorityRatio = goal.priority_weight / totalPriority;
-      allocation = remainingIncome * priorityRatio * 0.5; // Use 50% of remaining for flexibility
+      const totalPriority = regularGoals.reduce((sum: number, g: any) => sum + g.priority_weight, 0);
+      if (totalPriority > 0) {
+        const priorityRatio = goal.priority_weight / totalPriority;
+        allocation = remainingIncome * priorityRatio * 0.5; // Use 50% of remaining for flexibility
+      }
     }
     
     if (allocation > 0) {

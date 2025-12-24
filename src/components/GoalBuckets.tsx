@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Target, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, Edit2, Trash2, Target, Calendar, TrendingUp, Shield } from 'lucide-react';
 import { Goal } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
@@ -15,6 +15,7 @@ export function GoalBuckets() {
     priorityWeight: 5,
     monthlyContribution: 0,
     currentAmount: 0,
+    isEmergencyFund: false,
   });
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function GoalBuckets() {
     priorityWeight: goal.priority_weight,
     monthlyContribution: goal.monthly_contribution,
     currentAmount: goal.current_amount || 0,
+    isEmergencyFund: goal.is_emergency_fund || false,
     createdAt: goal.created_at,
     updatedAt: goal.updated_at,
   });
@@ -50,6 +52,7 @@ export function GoalBuckets() {
       priorityWeight: formData.priorityWeight!,
       monthlyContribution: parseFloat(formData.monthlyContribution as any) || 0,
       currentAmount: parseFloat(formData.currentAmount as any) || 0,
+      isEmergencyFund: formData.isEmergencyFund || false,
     };
 
     if (editingGoal?.id) {
@@ -64,6 +67,7 @@ export function GoalBuckets() {
 
   const handleEdit = (goal: Goal) => {
     setEditingGoal(goal);
+    setMonthlyContributionManuallyEdited(goal.monthlyContribution ? true : false);
     setFormData({
       name: goal.name,
       targetAmount: goal.targetAmount,
@@ -72,6 +76,7 @@ export function GoalBuckets() {
       priorityWeight: goal.priorityWeight,
       monthlyContribution: goal.monthlyContribution || 0,
       currentAmount: goal.currentAmount || 0,
+      isEmergencyFund: goal.isEmergencyFund || false,
     });
     setShowModal(true);
   };
@@ -86,6 +91,7 @@ export function GoalBuckets() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingGoal(null);
+    setMonthlyContributionManuallyEdited(false);
     setFormData({
       name: '',
       targetAmount: 0,
@@ -94,6 +100,7 @@ export function GoalBuckets() {
       priorityWeight: 5,
       monthlyContribution: 0,
       currentAmount: 0,
+      isEmergencyFund: false,
     });
   };
 
@@ -133,15 +140,46 @@ export function GoalBuckets() {
     return diffMonths > 0 ? diffMonths : 0;
   };
 
+  // Always calculate required monthly (for display on goal cards)
   const calculateRequiredMonthly = (goal: Goal) => {
-    // If goal hasn't started yet, return 0 (no monthly requirement until it starts)
-    if (!hasStarted(goal)) {
-      return 0;
-    }
     const monthsRemaining = calculateMonthsRemaining(goal);
     const remaining = goal.targetAmount - (goal.currentAmount || 0);
     return monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
   };
+
+  // Calculate required monthly from form data (for auto-population)
+  const calculateRequiredMonthlyFromForm = (): number => {
+    if (!formData.targetAmount || !formData.deadline) {
+      return 0;
+    }
+
+    const deadlineDate = new Date(formData.deadline);
+    const startDate = formData.startDate ? new Date(formData.startDate) : new Date();
+    const diffTime = deadlineDate.getTime() - startDate.getTime();
+    const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
+    
+    if (diffMonths <= 0) {
+      return 0;
+    }
+
+    const remaining = formData.targetAmount - (formData.currentAmount || 0);
+    return remaining / diffMonths;
+  };
+
+  // Track if user has manually edited monthly contribution
+  const [monthlyContributionManuallyEdited, setMonthlyContributionManuallyEdited] = useState(false);
+
+  // Auto-calculate monthly contribution when relevant fields change
+  useEffect(() => {
+    if (formData.targetAmount && formData.deadline && !monthlyContributionManuallyEdited) {
+      const calculated = calculateRequiredMonthlyFromForm();
+      if (calculated > 0) {
+        setFormData(prev => ({ ...prev, monthlyContribution: Math.round(calculated * 100) / 100 }));
+      } else {
+        setFormData(prev => ({ ...prev, monthlyContribution: 0 }));
+      }
+    }
+  }, [formData.targetAmount, formData.deadline, formData.startDate, formData.currentAmount, monthlyContributionManuallyEdited]);
 
   return (
     <div>
@@ -180,9 +218,27 @@ export function GoalBuckets() {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                        {goal.name}
-                      </h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                        <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>
+                          {goal.name}
+                        </h3>
+                        {goal.isEmergencyFund && (
+                          <span style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem',
+                            padding: '0.25rem 0.5rem', 
+                            background: '#fff3cd', 
+                            color: '#856404', 
+                            borderRadius: '4px', 
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}>
+                            <Shield size={12} />
+                            Emergency Fund
+                          </span>
+                        )}
+                      </div>
                       <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem', color: '#8e8e93', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Target size={14} />
@@ -260,13 +316,12 @@ export function GoalBuckets() {
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Required Monthly</div>
-                      {goalStarted ? (
-                        <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
-                          ₹{requiredMonthly.toLocaleString()}/month
-                        </div>
-                      ) : (
-                        <div style={{ fontWeight: 600, color: '#8e8e93' }}>
-                          Not started yet
+                      <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
+                        ₹{requiredMonthly.toLocaleString()}/month
+                      </div>
+                      {!goalStarted && goal.startDate && (
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          Starts in {monthsUntilStart} {monthsUntilStart === 1 ? 'month' : 'months'}
                         </div>
                       )}
                     </div>
@@ -356,14 +411,20 @@ export function GoalBuckets() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Monthly Contribution (₹) - Optional</label>
+                  <label>Monthly Contribution (₹)</label>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={formData.monthlyContribution || 0}
-                    onChange={(e) => setFormData({ ...formData, monthlyContribution: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => {
+                      setMonthlyContributionManuallyEdited(true);
+                      setFormData({ ...formData, monthlyContribution: parseFloat(e.target.value) || 0 });
+                    }}
                   />
+                  <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                    Auto-calculated from target, deadline, and current amount. You can override this value.
+                  </div>
                 </div>
               </div>
               <div className="form-group">
@@ -375,6 +436,19 @@ export function GoalBuckets() {
                   value={formData.currentAmount || 0}
                   onChange={(e) => setFormData({ ...formData, currentAmount: parseFloat(e.target.value) || 0 })}
                 />
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.isEmergencyFund || false}
+                    onChange={(e) => setFormData({ ...formData, isEmergencyFund: e.target.checked })}
+                  />
+                  <span>Mark as Emergency Fund</span>
+                </label>
+                <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem', marginLeft: '1.75rem' }}>
+                  Emergency funds get first priority in allocation until filled. Lower priority goals may be paused.
+                </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>

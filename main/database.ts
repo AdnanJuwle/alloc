@@ -11,6 +11,7 @@ interface Goal {
   priority_weight: number;
   monthly_contribution: number;
   current_amount: number;
+  is_emergency_fund?: boolean; // V2: Explicit emergency fund flag (first priority until filled)
   created_at: string;
   updated_at: string;
 }

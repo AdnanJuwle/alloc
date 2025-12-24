@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Target, TrendingUp, Calendar, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Target, TrendingUp, Calendar, AlertCircle, Shield } from 'lucide-react';
 import { Goal } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
@@ -24,6 +24,7 @@ export function Dashboard() {
     priorityWeight: goal.priority_weight,
     monthlyContribution: goal.monthly_contribution,
     currentAmount: goal.current_amount || 0,
+    isEmergencyFund: goal.is_emergency_fund || false,
     createdAt: goal.created_at,
     updatedAt: goal.updated_at,
   });
@@ -64,22 +65,27 @@ export function Dashboard() {
     return diffMonths > 0 ? diffMonths : 0;
   };
 
+  // Always calculate required monthly (for display on goal cards)
   const calculateRequiredMonthly = (goal: Goal) => {
-    // If goal hasn't started yet, return 0 (no monthly requirement until it starts)
-    if (!hasStarted(goal)) {
-      return 0;
-    }
     const monthsRemaining = calculateMonthsRemaining(goal);
     const remaining = goal.targetAmount - (goal.currentAmount || 0);
     return monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
   };
 
+  // Calculate required monthly only if goal has started (for dashboard totals)
+  const calculateRequiredMonthlyIfStarted = (goal: Goal) => {
+    if (!hasStarted(goal)) {
+      return 0;
+    }
+    return calculateRequiredMonthly(goal);
+  };
+
   const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
   const totalCurrent = goals.reduce((sum, g) => sum + (g.currentAmount || 0), 0);
-  // Only sum required monthly for goals that have started
+  // Only sum required monthly for goals that have started (for dashboard totals)
   const totalRequiredMonthly = goals
     .filter(g => hasStarted(g))
-    .reduce((sum, g) => sum + calculateRequiredMonthly(g), 0);
+    .reduce((sum, g) => sum + calculateRequiredMonthlyIfStarted(g), 0);
   const totalCurrentMonthly = goals
     .filter(g => hasStarted(g))
     .reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
@@ -91,7 +97,7 @@ export function Dashboard() {
       return monthsUntilStart <= 1; // Starting within 1 month is urgent
     }
     const monthsRemaining = calculateMonthsRemaining(g);
-    const required = calculateRequiredMonthly(g);
+    const required = calculateRequiredMonthlyIfStarted(g);
     return monthsRemaining < 6 || required > (g.monthlyContribution || 0) * 1.2;
   });
 
@@ -171,10 +177,26 @@ export function Dashboard() {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
                         <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>
                           {goal.name}
                         </h3>
+                        {goal.isEmergencyFund && (
+                          <span style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.25rem',
+                            padding: '0.25rem 0.5rem', 
+                            background: '#fff3cd', 
+                            color: '#856404', 
+                            borderRadius: '4px', 
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}>
+                            <Shield size={12} />
+                            Emergency Fund
+                          </span>
+                        )}
                         {isUrgent && (
                           <span style={{ 
                             padding: '0.25rem 0.5rem', 
@@ -237,13 +259,12 @@ export function Dashboard() {
                     </div>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Required Monthly</div>
-                      {goalStarted ? (
-                        <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
-                          ₹{requiredMonthly.toLocaleString()}/month
-                        </div>
-                      ) : (
-                        <div style={{ fontWeight: 600, color: '#8e8e93' }}>
-                          Not started yet
+                      <div style={{ fontWeight: 600, color: requiredMonthly > (goal.monthlyContribution || 0) ? '#ff3b30' : '#34c759' }}>
+                        ₹{requiredMonthly.toLocaleString()}/month
+                      </div>
+                      {!goalStarted && goal.startDate && (
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          Starts in {monthsUntilStart} {monthsUntilStart === 1 ? 'month' : 'months'}
                         </div>
                       )}
                     </div>

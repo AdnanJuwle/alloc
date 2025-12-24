@@ -7,6 +7,7 @@ export interface Goal {
   priorityWeight: number;
   monthlyContribution?: number;
   currentAmount?: number;
+  isEmergencyFund?: boolean; // V2: Explicit emergency fund flag (first priority until filled)
   createdAt?: string;
   updatedAt?: string;
 }
