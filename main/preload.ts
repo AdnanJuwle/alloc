@@ -48,5 +48,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createAllocationRule: (rule: any) => ipcRenderer.invoke('create-allocation-rule', rule),
   updateAllocationRule: (id: number, rule: any) => ipcRenderer.invoke('update-allocation-rule', id, rule),
   deleteAllocationRule: (id: number) => ipcRenderer.invoke('delete-allocation-rule', id),
+  
+  // V2: Consequence projection
+  calculateConsequence: (goalId: number, shortfall: number, year: number, month: number) => 
+    ipcRenderer.invoke('calculate-consequence', goalId, shortfall, year, month),
+  
+  // V2: Flex events
+  getFlexEvents: () => ipcRenderer.invoke('get-flex-events'),
+  createFlexEvent: (flexEvent: any) => ipcRenderer.invoke('create-flex-event', flexEvent),
+  updateFlexEvent: (id: number, flexEvent: any) => ipcRenderer.invoke('update-flex-event', id, flexEvent),
+  deleteFlexEvent: (id: number) => ipcRenderer.invoke('delete-flex-event', id),
+  
+  // V2: Plan health
+  calculatePlanHealth: () => ipcRenderer.invoke('calculate-plan-health'),
 });
 

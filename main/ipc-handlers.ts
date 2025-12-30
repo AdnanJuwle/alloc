@@ -25,6 +25,10 @@ import {
   insertAllocationRule,
   updateAllocationRule,
   deleteAllocationRule,
+  queryFlexEvents,
+  insertFlexEvent,
+  updateFlexEvent,
+  deleteFlexEvent,
 } from './database';
 
 // Goals
@@ -564,4 +568,217 @@ ipcMain.handle('update-allocation-rule', async (_, id, rule) => {
 
 ipcMain.handle('delete-allocation-rule', async (_, id) => {
   deleteAllocationRule(id);
+});
+
+// V2: Consequence Projection
+ipcMain.handle('calculate-consequence', async (_, goalId: number, shortfall: number, year: number, month: number) => {
+  const goals = queryGoals();
+  const goal = goals.find(g => g.id === goalId);
+  if (!goal) return null;
+  
+  const deadline = new Date(goal.deadline);
+  const today = new Date();
+  const monthStart = new Date(year, month - 1, 1);
+  
+  // Calculate months remaining from the deviation month
+  const monthsFromDeviation = Math.ceil((deadline.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24 * 30));
+  const remainingAmount = goal.target_amount - (goal.current_amount || 0);
+  
+  // Original required monthly
+  const originalRequiredMonthly = monthsFromDeviation > 0 ? remainingAmount / monthsFromDeviation : remainingAmount;
+  
+  // New required monthly (to catch up)
+  const newRequiredMonthly = monthsFromDeviation > 0 
+    ? (remainingAmount + shortfall) / monthsFromDeviation 
+    : remainingAmount + shortfall;
+  
+  // Check if catch-up is possible
+  const canCatchUp = newRequiredMonthly <= (originalRequiredMonthly * 2); // Allow up to 2x original
+  
+  // Calculate deadline shift if needed
+  let deadlineShiftMonths: number | undefined;
+  let projectedDeadline: string | undefined;
+  
+  if (!canCatchUp && monthsFromDeviation > 0) {
+    // Calculate how many months needed at original rate
+    const monthsNeeded = Math.ceil((remainingAmount + shortfall) / originalRequiredMonthly);
+    deadlineShiftMonths = Math.max(0, monthsNeeded - monthsFromDeviation);
+    
+    if (deadlineShiftMonths > 0) {
+      const newDeadline = new Date(deadline);
+      newDeadline.setMonth(newDeadline.getMonth() + deadlineShiftMonths);
+      projectedDeadline = newDeadline.toISOString();
+    }
+  }
+  
+  // Find affected goals (lower priority goals that might be impacted)
+  const affectedGoals = goals
+    .filter(g => g.id !== goalId && g.priority_weight < goal.priority_weight)
+    .map(g => ({
+      goalId: g.id!,
+      goalName: g.name,
+      impact: 'delayed' as const,
+    }));
+  
+  return {
+    goalId,
+    goalName: goal.name,
+    originalDeadline: goal.deadline,
+    projectedDeadline,
+    originalRequiredMonthly,
+    newRequiredMonthly,
+    deadlineShiftMonths,
+    impact: {
+      newRequiredMonthly,
+      deadlineShift: deadlineShiftMonths,
+      affectedGoals: affectedGoals.map(ag => ag.goalId),
+      totalShortfall: shortfall,
+      canCatchUp,
+    },
+    affectedGoals,
+  };
+});
+
+// V2: Flex Events
+ipcMain.handle('get-flex-events', async () => {
+  return queryFlexEvents();
+});
+
+ipcMain.handle('create-flex-event', async (_, flexEvent) => {
+  return insertFlexEvent({
+    date: flexEvent.date,
+    reason: flexEvent.reason,
+    amount: flexEvent.amount,
+    affected_goals: flexEvent.affectedGoals,
+    rebalancing_plan: JSON.stringify(flexEvent.rebalancingPlan),
+    acknowledged: flexEvent.acknowledged || false,
+  });
+});
+
+ipcMain.handle('update-flex-event', async (_, id, flexEvent) => {
+  updateFlexEvent(id, {
+    date: flexEvent.date,
+    reason: flexEvent.reason,
+    amount: flexEvent.amount,
+    affected_goals: flexEvent.affectedGoals,
+    rebalancing_plan: typeof flexEvent.rebalancingPlan === 'string' 
+      ? flexEvent.rebalancingPlan 
+      : JSON.stringify(flexEvent.rebalancingPlan),
+    acknowledged: flexEvent.acknowledged,
+  });
+});
+
+ipcMain.handle('delete-flex-event', async (_, id) => {
+  deleteFlexEvent(id);
+});
+
+// V2: Plan Health Metrics
+ipcMain.handle('calculate-plan-health', async () => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const incomeScenarios = queryIncomeScenarios();
+  const database = getDatabase();
+  const acknowledgedDeviations = database.acknowledged_deviations || [];
+  
+  const now = new Date();
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  
+  // Calculate deviation count in last 3 months
+  const recentDeviations = acknowledgedDeviations.filter(d => {
+    const devDate = new Date(d.year, d.month - 1, 1);
+    return devDate >= threeMonthsAgo;
+  });
+  const deviationCount = recentDeviations.length;
+  
+  // Calculate allocation efficiency
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  let allocationEfficiency = 0;
+  if (expectedScenario) {
+    const netIncome = expectedScenario.monthly_income * (1 - expectedScenario.tax_rate / 100) - expectedScenario.fixed_expenses;
+    const totalRequiredMonthly = goals
+      .filter(g => {
+        if (!g.start_date) return true;
+        return new Date(g.start_date) <= now;
+      })
+      .reduce((sum, g) => {
+        const deadline = new Date(g.deadline);
+        const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+        const remaining = g.target_amount - (g.current_amount || 0);
+        return sum + (monthsRemaining > 0 ? remaining / monthsRemaining : remaining);
+      }, 0);
+    
+    allocationEfficiency = netIncome > 0 ? Math.min(100, (totalRequiredMonthly / netIncome) * 100) : 0;
+  }
+  
+  // Calculate fragility score (0-100, higher = more fragile)
+  let fragilityScore = 0;
+  const urgentGoals = goals.filter(g => {
+    const deadline = new Date(g.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = g.target_amount - (g.current_amount || 0);
+    const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+    return monthsRemaining < 3 && requiredMonthly > 0;
+  });
+  fragilityScore = Math.min(100, (urgentGoals.length / Math.max(1, goals.length)) * 100);
+  
+  // Calculate slack months (minimum buffer before any deadline)
+  let slackMonths = Infinity;
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    if (remaining > 0) {
+      const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+      const currentMonthly = goal.monthly_contribution || 0;
+      if (currentMonthly > 0 && requiredMonthly > 0) {
+        const monthsAtCurrentRate = remaining / currentMonthly;
+        const slack = monthsRemaining - monthsAtCurrentRate;
+        slackMonths = Math.min(slackMonths, slack);
+      }
+    }
+  }
+  if (slackMonths === Infinity) slackMonths = 0;
+  
+  // Count on-track vs behind goals
+  let onTrackGoals = 0;
+  let behindGoals = 0;
+  
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    if (remaining <= 0) {
+      onTrackGoals++;
+      continue;
+    }
+    
+    const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+    const currentMonthly = goal.monthly_contribution || 0;
+    
+    if (currentMonthly >= requiredMonthly * 0.9) { // 90% threshold
+      onTrackGoals++;
+    } else {
+      behindGoals++;
+    }
+  }
+  
+  // Determine health status
+  let healthStatus: 'healthy' | 'warning' | 'critical';
+  if (fragilityScore < 30 && deviationCount < 2 && slackMonths > 2) {
+    healthStatus = 'healthy';
+  } else if (fragilityScore < 60 && deviationCount < 4 && slackMonths > 0) {
+    healthStatus = 'warning';
+  } else {
+    healthStatus = 'critical';
+  }
+  
+  return {
+    allocationEfficiency: Math.round(allocationEfficiency * 100) / 100,
+    fragilityScore: Math.round(fragilityScore * 100) / 100,
+    slackMonths: Math.round(slackMonths * 100) / 100,
+    deviationCount,
+    onTrackGoals,
+    behindGoals,
+    healthStatus,
+  };
 });

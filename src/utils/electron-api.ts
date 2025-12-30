@@ -42,6 +42,18 @@ export interface ElectronAPI {
   createAllocationRule: (rule: any) => Promise<number>;
   updateAllocationRule: (id: number, rule: any) => Promise<void>;
   deleteAllocationRule: (id: number) => Promise<void>;
+  
+  // V2: Consequence projection
+  calculateConsequence: (goalId: number, shortfall: number, year: number, month: number) => Promise<any>;
+  
+  // V2: Flex events
+  getFlexEvents: () => Promise<any[]>;
+  createFlexEvent: (flexEvent: any) => Promise<number>;
+  updateFlexEvent: (id: number, flexEvent: any) => Promise<void>;
+  deleteFlexEvent: (id: number) => Promise<void>;
+  
+  // V2: Plan health
+  calculatePlanHealth: () => Promise<any>;
 }
 
 declare global {

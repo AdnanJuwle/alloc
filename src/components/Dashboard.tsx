@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter } from 'lucide-react';
-import { Goal, SpendingPeriod, SpendingAlert, Category } from '../types';
+import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter, Activity } from 'lucide-react';
+import { Goal, SpendingPeriod, SpendingAlert, Category, PlanHealth } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
 export function Dashboard() {
@@ -9,6 +9,7 @@ export function Dashboard() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [spendingData, setSpendingData] = useState<SpendingPeriod | null>(null);
   const [alerts, setAlerts] = useState<SpendingAlert[]>([]);
+  const [planHealth, setPlanHealth] = useState<PlanHealth | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly'>('monthly');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
@@ -27,7 +28,17 @@ export function Dashboard() {
     loadCategories();
     loadSpendingData();
     loadAlerts();
+    loadPlanHealth();
   }, [selectedPeriod, selectedYear, selectedMonth, selectedCategoryFilter]);
+
+  const loadPlanHealth = async () => {
+    try {
+      const data = await electronAPI.calculatePlanHealth();
+      setPlanHealth(data);
+    } catch (error) {
+      console.error('Error loading plan health:', error);
+    }
+  };
 
   const loadCategories = async () => {
     try {
@@ -359,6 +370,30 @@ export function Dashboard() {
             </div>
             <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
               Categories need attention
+            </div>
+          </div>
+        )}
+
+        {planHealth && (
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+              <Activity size={20} style={{ 
+                color: planHealth.healthStatus === 'healthy' ? '#34c759' : 
+                       planHealth.healthStatus === 'warning' ? '#ff9500' : '#ff3b30' 
+              }} />
+              <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Plan Health</div>
+            </div>
+            <div style={{ 
+              fontSize: '2rem', 
+              fontWeight: 600, 
+              color: planHealth.healthStatus === 'healthy' ? '#34c759' : 
+                     planHealth.healthStatus === 'warning' ? '#ff9500' : '#ff3b30',
+              textTransform: 'capitalize'
+            }}>
+              {planHealth.healthStatus}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+              Efficiency: {planHealth.allocationEfficiency.toFixed(1)}%
             </div>
           </div>
         )}

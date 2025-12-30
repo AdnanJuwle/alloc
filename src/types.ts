@@ -117,3 +117,58 @@ export interface AutoSplitResult {
   totalAllocated: number;
 }
 
+// V2: Deviation Impact and Consequence Projection
+export interface DeviationImpact {
+  newRequiredMonthly: number;
+  deadlineShift?: number; // months
+  affectedGoals: number[]; // goal IDs
+  totalShortfall: number;
+  canCatchUp: boolean; // Whether it's possible to catch up without deadline shift
+}
+
+export interface ConsequenceProjection {
+  goalId: number;
+  goalName: string;
+  originalDeadline: string;
+  projectedDeadline?: string;
+  originalRequiredMonthly: number;
+  newRequiredMonthly: number;
+  deadlineShiftMonths?: number;
+  impact: DeviationImpact;
+  affectedGoals: Array<{
+    goalId: number;
+    goalName: string;
+    impact: 'delayed' | 'paused' | 'reduced';
+  }>;
+}
+
+// V2: Flex Events
+export interface RebalancingPlan {
+  pausedGoals: number[];
+  adjustedAllocations: Array<{ goalId: number; newAmount: number }>;
+  resumeDate?: string;
+}
+
+export interface FlexEvent {
+  id?: number;
+  date: string;
+  reason: string;
+  amount: number;
+  affectedGoals: number[]; // Goals paused/adjusted
+  rebalancingPlan: RebalancingPlan;
+  acknowledged: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// V2: Plan Health Metrics
+export interface PlanHealth {
+  allocationEfficiency: number; // 0-100%
+  fragilityScore: number; // 0-100 (higher = more fragile)
+  slackMonths: number; // Buffer before any deadline
+  deviationCount: number; // Deviations in last 3 months
+  onTrackGoals: number; // Goals meeting targets
+  behindGoals: number; // Goals behind schedule
+  healthStatus: 'healthy' | 'warning' | 'critical';
+}
+

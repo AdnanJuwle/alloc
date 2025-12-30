@@ -80,6 +80,19 @@ interface AllocationRule {
   updated_at: string;
 }
 
+// V2: Flex Events
+interface FlexEvent {
+  id: number;
+  date: string;
+  reason: string;
+  amount: number;
+  affected_goals: number[]; // JSON array of goal IDs
+  rebalancing_plan: string; // JSON string of RebalancingPlan
+  acknowledged: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 interface Database {
   goals: Goal[];
   income_scenarios: IncomeScenario[];
@@ -98,9 +111,11 @@ interface Database {
   categories?: Category[];
   budgets?: Budget[];
   allocation_rules?: AllocationRule[];
+  flex_events?: FlexEvent[];
   nextCategoryId?: number;
   nextBudgetId?: number;
   nextRuleId?: number;
+  nextFlexEventId?: number;
 }
 
 let db: Database | null = null;
@@ -139,9 +154,11 @@ export function initializeDatabase() {
   if (!database.categories) database.categories = [];
   if (!database.budgets) database.budgets = [];
   if (!database.allocation_rules) database.allocation_rules = [];
+  if (!database.flex_events) database.flex_events = [];
   if (!database.nextCategoryId) database.nextCategoryId = 1;
   if (!database.nextBudgetId) database.nextBudgetId = 1;
   if (!database.nextRuleId) database.nextRuleId = 1;
+  if (!database.nextFlexEventId) database.nextFlexEventId = 1;
   
   db = database;
   saveDatabase();
@@ -160,9 +177,11 @@ function createEmptyDatabase(): Database {
     categories: [],
     budgets: [],
     allocation_rules: [],
+    flex_events: [],
     nextCategoryId: 1,
     nextBudgetId: 1,
     nextRuleId: 1,
+    nextFlexEventId: 1,
   };
 }
 
@@ -418,6 +437,47 @@ export function deleteAllocationRule(id: number): void {
   const database = getDatabase();
   if (database.allocation_rules) {
     database.allocation_rules = database.allocation_rules.filter(r => r.id !== id);
+    saveDatabase();
+  }
+}
+
+// V2: Flex Event functions
+export function queryFlexEvents(): FlexEvent[] {
+  const database = getDatabase();
+  return [...(database.flex_events || [])].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+}
+
+export function insertFlexEvent(flexEvent: Omit<FlexEvent, 'id' | 'created_at' | 'updated_at'>): number {
+  const database = getDatabase();
+  if (!database.flex_events) database.flex_events = [];
+  if (!database.nextFlexEventId) database.nextFlexEventId = 1;
+  
+  const newFlexEvent: FlexEvent = {
+    ...flexEvent,
+    id: database.nextFlexEventId++,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  database.flex_events.push(newFlexEvent);
+  saveDatabase();
+  return newFlexEvent.id;
+}
+
+export function updateFlexEvent(id: number, updates: Partial<FlexEvent>): void {
+  const database = getDatabase();
+  const flexEvent = database.flex_events?.find(f => f.id === id);
+  if (flexEvent) {
+    Object.assign(flexEvent, updates, { updated_at: new Date().toISOString() });
+    saveDatabase();
+  }
+}
+
+export function deleteFlexEvent(id: number): void {
+  const database = getDatabase();
+  if (database.flex_events) {
+    database.flex_events = database.flex_events.filter(f => f.id !== id);
     saveDatabase();
   }
 }

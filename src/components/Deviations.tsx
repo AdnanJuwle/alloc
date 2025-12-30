@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, XCircle, TrendingDown, Calendar } from 'lucide-react';
 import { electronAPI } from '../utils/electron-api';
+import { ConsequenceProjection } from '../types';
 
 interface Deviation {
   goalId: number;
@@ -17,6 +18,7 @@ export function Deviations() {
   const [deviations, setDeviations] = useState<Deviation[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const [consequences, setConsequences] = useState<Map<number, ConsequenceProjection>>(new Map());
 
   useEffect(() => {
     loadDeviations();
@@ -26,6 +28,33 @@ export function Deviations() {
     const data = await electronAPI.detectDeviations(selectedYear, selectedMonth);
     setDeviations(data);
   };
+
+  const loadConsequences = async (deviationsToProcess: Deviation[]) => {
+    const newConsequences = new Map<number, ConsequenceProjection>();
+    const unacknowledged = deviationsToProcess.filter(d => !d.acknowledged);
+    
+    for (const deviation of unacknowledged) {
+      const deviationDate = new Date(deviation.date);
+      const consequence = await electronAPI.calculateConsequence(
+        deviation.goalId,
+        deviation.shortfall,
+        deviationDate.getFullYear(),
+        deviationDate.getMonth() + 1
+      );
+      if (consequence) {
+        newConsequences.set(deviation.goalId, consequence);
+      }
+    }
+    setConsequences(newConsequences);
+  };
+
+  useEffect(() => {
+    if (deviations.length > 0) {
+      loadConsequences(deviations);
+    } else {
+      setConsequences(new Map());
+    }
+  }, [deviations]);
 
   const handleAcknowledge = async (deviation: Deviation) => {
     const deviationDate = new Date(deviation.date);
@@ -143,7 +172,7 @@ export function Deviations() {
                     </button>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', fontSize: '0.875rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', fontSize: '0.875rem', marginBottom: '1rem' }}>
                     <div>
                       <div style={{ color: '#8e8e93', marginBottom: '0.25rem' }}>Planned</div>
                       <div style={{ fontWeight: 600 }}>₹{deviation.plannedAmount.toLocaleString()}</div>
@@ -159,6 +188,66 @@ export function Deviations() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Consequence Projection */}
+                  {consequences.has(deviation.goalId) && (() => {
+                    const consequence = consequences.get(deviation.goalId)!;
+                    return (
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: '#fff3cd',
+                        borderRadius: '8px',
+                        border: '1px solid #ffcc00',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <TrendingDown size={16} style={{ color: '#ff9500' }} />
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Impact Projection</div>
+                        </div>
+                        <div style={{ display: 'grid', gap: '0.5rem', fontSize: '0.875rem' }}>
+                          <div>
+                            <span style={{ color: '#8e8e93' }}>New Required Monthly: </span>
+                            <span style={{ fontWeight: 600, color: '#ff9500' }}>
+                              ₹{consequence.newRequiredMonthly.toLocaleString()}
+                            </span>
+                            <span style={{ color: '#8e8e93', marginLeft: '0.5rem' }}>
+                              (was ₹{consequence.originalRequiredMonthly.toLocaleString()})
+                            </span>
+                          </div>
+                          {consequence.deadlineShiftMonths && consequence.deadlineShiftMonths > 0 && (
+                            <div>
+                              <span style={{ color: '#8e8e93' }}>Deadline Shift: </span>
+                              <span style={{ fontWeight: 600, color: '#ff3b30' }}>
+                                +{consequence.deadlineShiftMonths} months
+                              </span>
+                              {consequence.projectedDeadline && (
+                                <span style={{ color: '#8e8e93', marginLeft: '0.5rem' }}>
+                                  (New: {new Date(consequence.projectedDeadline).toLocaleDateString()})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {consequence.impact.canCatchUp && (
+                            <div style={{ color: '#34c759', fontSize: '0.75rem' }}>
+                              ✓ Can catch up without deadline shift
+                            </div>
+                          )}
+                          {consequence.affectedGoals.length > 0 && (
+                            <div style={{ marginTop: '0.5rem' }}>
+                              <div style={{ color: '#8e8e93', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                                Affected Goals:
+                              </div>
+                              {consequence.affectedGoals.map(ag => (
+                                <div key={ag.goalId} style={{ fontSize: '0.75rem', color: '#8e8e93' }}>
+                                  • {ag.goalName} ({ag.impact})
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
