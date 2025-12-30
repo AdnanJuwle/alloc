@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:electron\" \"npm run dev:react\"",
     "dev:electron": "tsc -p tsconfig.main.json && electron .",
     "dev:react": "vite",
-    "build": "npm run build:main && npm run build:react && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir || echo Build completed (signing errors can be ignored)",
+    "build": "npm run build:main && npm run build:react && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir || echo 'Build completed (signing errors can be ignored)'",
     "build:main": "tsc -p tsconfig.main.json",
     "build:react": "vite build",
     "dist": "npm run build"

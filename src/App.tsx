@@ -4,11 +4,11 @@ import { IncomeSimulator } from './components/IncomeSimulator';
 import { AutoSplit } from './components/AutoSplit';
 import { Dashboard } from './components/Dashboard';
 import { Transactions } from './components/Transactions';
+import { Deviations } from './components/Deviations';
+import { BudgetsAndRules } from './components/BudgetsAndRules';
 import './App.css';
 
-import { Deviations } from './components/Deviations';
-
-type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations';
+type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations' | 'budgets-rules';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -57,6 +57,12 @@ function App() {
           >
             Deviations
           </button>
+          <button
+            className={activeTab === 'budgets-rules' ? 'active' : ''}
+            onClick={() => setActiveTab('budgets-rules')}
+          >
+            Budgets & Rules
+          </button>
         </nav>
       </header>
       <main className="app-main">
@@ -66,6 +72,7 @@ function App() {
         {activeTab === 'auto-split' && <AutoSplit />}
         {activeTab === 'transactions' && <Transactions />}
         {activeTab === 'deviations' && <Deviations />}
+        {activeTab === 'budgets-rules' && <BudgetsAndRules />}
       </main>
     </div>
   );

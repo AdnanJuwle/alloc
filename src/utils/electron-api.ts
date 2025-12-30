@@ -18,6 +18,30 @@ export interface ElectronAPI {
   // V2: Deviation tracking
   detectDeviations: (year: number, month: number) => Promise<any[]>;
   acknowledgeDeviation: (goalId: number, year: number, month: number) => Promise<void>;
+  
+  // V2: Categories
+  getCategories: () => Promise<any[]>;
+  createCategory: (category: any) => Promise<number>;
+  updateCategory: (id: number, category: any) => Promise<void>;
+  deleteCategory: (id: number) => Promise<void>;
+  
+  // V2: Budgets
+  getBudgets: (year?: number, month?: number) => Promise<any[]>;
+  createBudget: (budget: any) => Promise<number>;
+  updateBudget: (id: number, budget: any) => Promise<void>;
+  deleteBudget: (id: number) => Promise<void>;
+  
+  // V2: Spending alerts
+  getSpendingAlerts: (year?: number, month?: number) => Promise<any[]>;
+  
+  // V2: Time-based views
+  getSpendingPeriod: (period: 'weekly' | 'monthly', year?: number, month?: number, weekStart?: string) => Promise<any>;
+  
+  // V2: Allocation rules
+  getAllocationRules: () => Promise<any[]>;
+  createAllocationRule: (rule: any) => Promise<number>;
+  updateAllocationRule: (id: number, rule: any) => Promise<void>;
+  deleteAllocationRule: (id: number) => Promise<void>;
 }
 
 declare global {

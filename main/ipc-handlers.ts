@@ -13,6 +13,18 @@ import {
   insertTransaction,
   findIncomeScenarioById,
   saveDatabaseToDisk,
+  queryCategories,
+  insertCategory,
+  updateCategory,
+  deleteCategory,
+  queryBudgets,
+  insertBudget,
+  updateBudget,
+  deleteBudget,
+  queryAllocationRules,
+  insertAllocationRule,
+  updateAllocationRule,
+  deleteAllocationRule,
 } from './database';
 
 // Goals
@@ -87,6 +99,7 @@ ipcMain.handle('get-transactions', async () => {
 ipcMain.handle('create-transaction', async (_, transaction) => {
   return insertTransaction({
     goal_id: transaction.goalId || null,
+    category_id: transaction.categoryId || null, // V2: Support categories
     amount: transaction.amount,
     transaction_type: transaction.transactionType,
     description: transaction.description || null,
@@ -336,4 +349,219 @@ ipcMain.handle('acknowledge-deviation', async (_, goalId: number, year: number, 
     });
     saveDatabaseToDisk();
   }
+});
+
+// V2: Categories
+ipcMain.handle('get-categories', async () => {
+  return queryCategories();
+});
+
+ipcMain.handle('create-category', async (_, category) => {
+  return insertCategory({
+    name: category.name,
+    icon: category.icon || null,
+    color: category.color || null,
+  });
+});
+
+ipcMain.handle('update-category', async (_, id, category) => {
+  updateCategory(id, {
+    name: category.name,
+    icon: category.icon || null,
+    color: category.color || null,
+  });
+});
+
+ipcMain.handle('delete-category', async (_, id) => {
+  deleteCategory(id);
+});
+
+// V2: Budgets
+ipcMain.handle('get-budgets', async (_, year?: number, month?: number) => {
+  return queryBudgets(year, month);
+});
+
+ipcMain.handle('create-budget', async (_, budget) => {
+  return insertBudget({
+    category_id: budget.categoryId,
+    monthly_limit: budget.monthlyLimit,
+    warning_threshold: budget.warningThreshold || 80,
+    is_hard_limit: budget.isHardLimit || false,
+    year: budget.year,
+    month: budget.month,
+  });
+});
+
+ipcMain.handle('update-budget', async (_, id, budget) => {
+  updateBudget(id, {
+    category_id: budget.categoryId,
+    monthly_limit: budget.monthlyLimit,
+    warning_threshold: budget.warningThreshold,
+    is_hard_limit: budget.isHardLimit,
+    year: budget.year,
+    month: budget.month,
+  });
+});
+
+ipcMain.handle('delete-budget', async (_, id) => {
+  deleteBudget(id);
+});
+
+// V2: Spending alerts
+ipcMain.handle('get-spending-alerts', async (_, year?: number, month?: number) => {
+  const now = new Date();
+  const targetYear = year || now.getFullYear();
+  const targetMonth = month || (now.getMonth() + 1);
+  
+  const budgets = queryBudgets(targetYear, targetMonth);
+  const transactions = queryTransactions();
+  const categories = queryCategories();
+  
+  // Filter transactions for the target month
+  const monthStart = new Date(targetYear, targetMonth - 1, 1);
+  const monthEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+  
+  const monthTransactions = transactions.filter(t => {
+    const txDate = new Date(t.date);
+    return txDate >= monthStart && txDate <= monthEnd && t.transaction_type === 'expense' && t.category_id;
+  });
+  
+  const alerts: any[] = [];
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+  const daysElapsed = Math.min(now.getDate(), daysInMonth);
+  const daysRemaining = daysInMonth - daysElapsed;
+  
+  for (const budget of budgets) {
+    const category = categories.find(c => c.id === budget.category_id);
+    if (!category) continue;
+    
+    const categorySpending = monthTransactions
+      .filter(t => t.category_id === budget.category_id)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    const percentageUsed = (categorySpending / budget.monthly_limit) * 100;
+    
+    let alertType: 'warning' | 'limit_reached' | 'overspent' | null = null;
+    
+    if (categorySpending > budget.monthly_limit) {
+      alertType = 'overspent';
+    } else if (categorySpending >= budget.monthly_limit) {
+      alertType = 'limit_reached';
+    } else if (percentageUsed >= budget.warning_threshold) {
+      alertType = 'warning';
+    }
+    
+    if (alertType) {
+      alerts.push({
+        categoryId: budget.category_id,
+        categoryName: category.name,
+        currentSpending: categorySpending,
+        budgetLimit: budget.monthly_limit,
+        percentageUsed: Math.round(percentageUsed * 100) / 100,
+        alertType,
+        daysRemaining,
+        isHardLimit: budget.is_hard_limit,
+      });
+    }
+  }
+  
+  return alerts;
+});
+
+// V2: Time-based spending views
+ipcMain.handle('get-spending-period', async (_, period: 'weekly' | 'monthly', year?: number, month?: number, weekStart?: string) => {
+  const now = new Date();
+  const targetYear = year || now.getFullYear();
+  const targetMonth = month || (now.getMonth() + 1);
+  
+  let startDate: Date;
+  let endDate: Date;
+  
+  if (period === 'weekly') {
+    if (weekStart) {
+      startDate = new Date(weekStart);
+    } else {
+      // Default to current week (Monday to Sunday)
+      const dayOfWeek = now.getDay();
+      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Adjust to Monday
+      startDate = new Date(now.setDate(diff));
+    }
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
+    endDate.setHours(23, 59, 59, 999);
+  } else {
+    // Monthly
+    startDate = new Date(targetYear, targetMonth - 1, 1);
+    endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+  }
+  
+  const transactions = queryTransactions();
+  const categories = queryCategories();
+  
+  const periodTransactions = transactions.filter(t => {
+    const txDate = new Date(t.date);
+    return txDate >= startDate && txDate <= endDate && t.transaction_type === 'expense' && t.category_id;
+  });
+  
+  const totalSpending = periodTransactions.reduce((sum, t) => sum + t.amount, 0);
+  
+  // Group by category
+  const categoryMap = new Map<number, number>();
+  for (const tx of periodTransactions) {
+    if (tx.category_id) {
+      categoryMap.set(tx.category_id, (categoryMap.get(tx.category_id) || 0) + tx.amount);
+    }
+  }
+  
+  const byCategory = Array.from(categoryMap.entries()).map(([categoryId, amount]) => {
+    const category = categories.find(c => c.id === categoryId);
+    return {
+      categoryId,
+      categoryName: category?.name || 'Unknown',
+      amount,
+      percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0,
+    };
+  }).sort((a, b) => b.amount - a.amount);
+  
+  return {
+    period,
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString(),
+    totalSpending,
+    byCategory,
+  };
+});
+
+// V2: Allocation rules
+ipcMain.handle('get-allocation-rules', async () => {
+  return queryAllocationRules();
+});
+
+ipcMain.handle('create-allocation-rule', async (_, rule) => {
+  return insertAllocationRule({
+    name: rule.name,
+    condition: rule.condition,
+    condition_value: rule.conditionValue || null,
+    action: rule.action,
+    action_value: rule.actionValue || null,
+    target_category_id: rule.targetCategoryId || null,
+    is_active: rule.isActive !== false,
+  });
+});
+
+ipcMain.handle('update-allocation-rule', async (_, id, rule) => {
+  updateAllocationRule(id, {
+    name: rule.name,
+    condition: rule.condition,
+    condition_value: rule.conditionValue || null,
+    action: rule.action,
+    action_value: rule.actionValue || null,
+    target_category_id: rule.targetCategoryId || null,
+    is_active: rule.isActive,
+  });
+});
+
+ipcMain.handle('delete-allocation-rule', async (_, id) => {
+  deleteAllocationRule(id);
 });

@@ -5,10 +5,12 @@ import { electronAPI } from '../utils/electron-api';
 
 export function Transactions() {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState<Partial<Transaction>>({
     goalId: undefined,
+    categoryId: undefined,
     amount: 0,
     transactionType: 'allocation',
     description: '',
@@ -17,6 +19,7 @@ export function Transactions() {
 
   useEffect(() => {
     loadGoals();
+    loadCategories();
     loadTransactions();
   }, []);
 
@@ -35,6 +38,11 @@ export function Transactions() {
     })));
   };
 
+  const loadCategories = async () => {
+    const data = await electronAPI.getCategories();
+    setCategories(data);
+  };
+
   const loadTransactions = async () => {
     const data = await electronAPI.getTransactions();
     setTransactions(data.map(transformTransaction));
@@ -43,6 +51,7 @@ export function Transactions() {
   const transformTransaction = (tx: any): Transaction => ({
     id: tx.id,
     goalId: tx.goal_id || undefined,
+    categoryId: tx.category_id || undefined,
     amount: tx.amount,
     transactionType: tx.transaction_type,
     description: tx.description || undefined,
@@ -59,6 +68,7 @@ export function Transactions() {
     
     const transactionData = {
       goalId: formData.goalId || undefined,
+      categoryId: formData.categoryId || undefined,
       amount: parseFloat(formData.amount as any),
       transactionType: formData.transactionType!,
       description: formData.description || undefined,
@@ -88,6 +98,7 @@ export function Transactions() {
     setShowModal(false);
     setFormData({
       goalId: undefined,
+      categoryId: undefined,
       amount: 0,
       transactionType: 'allocation',
       description: '',
@@ -99,6 +110,12 @@ export function Transactions() {
     if (!goalId) return 'N/A';
     const goal = goals.find(g => g.id === goalId);
     return goal?.name || 'Unknown';
+  };
+
+  const getCategoryName = (categoryId?: number) => {
+    if (!categoryId) return 'N/A';
+    const category = categories.find(c => c.id === categoryId);
+    return category?.name || 'Unknown';
   };
 
   const getTransactionIcon = (type: string) => {
@@ -156,7 +173,10 @@ export function Transactions() {
                     <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>
                       {transaction.description || 'No description'}
                       {transaction.goalId && (
-                        <span> • {getGoalName(transaction.goalId)}</span>
+                        <span> • Goal: {getGoalName(transaction.goalId)}</span>
+                      )}
+                      {transaction.categoryId && (
+                        <span> • Category: {getCategoryName(transaction.categoryId)}</span>
                       )}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
@@ -217,6 +237,23 @@ export function Transactions() {
                     {goals.map((goal) => (
                       <option key={goal.id} value={goal.id}>
                         {goal.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.transactionType === 'expense' && (
+                <div className="form-group">
+                  <label>Category</label>
+                  <select
+                    value={formData.categoryId || ''}
+                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value ? parseInt(e.target.value) : undefined })}
+                  >
+                    <option value="">No category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
                       </option>
                     ))}
                   </select>

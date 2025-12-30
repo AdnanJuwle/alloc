@@ -23,5 +23,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // V2: Deviation tracking
   detectDeviations: (year: number, month: number) => ipcRenderer.invoke('detect-deviations', year, month),
   acknowledgeDeviation: (goalId: number, year: number, month: number) => ipcRenderer.invoke('acknowledge-deviation', goalId, year, month),
+  
+  // V2: Categories
+  getCategories: () => ipcRenderer.invoke('get-categories'),
+  createCategory: (category: any) => ipcRenderer.invoke('create-category', category),
+  updateCategory: (id: number, category: any) => ipcRenderer.invoke('update-category', id, category),
+  deleteCategory: (id: number) => ipcRenderer.invoke('delete-category', id),
+  
+  // V2: Budgets
+  getBudgets: (year?: number, month?: number) => ipcRenderer.invoke('get-budgets', year, month),
+  createBudget: (budget: any) => ipcRenderer.invoke('create-budget', budget),
+  updateBudget: (id: number, budget: any) => ipcRenderer.invoke('update-budget', id, budget),
+  deleteBudget: (id: number) => ipcRenderer.invoke('delete-budget', id),
+  
+  // V2: Spending alerts
+  getSpendingAlerts: (year?: number, month?: number) => ipcRenderer.invoke('get-spending-alerts', year, month),
+  
+  // V2: Time-based views
+  getSpendingPeriod: (period: 'weekly' | 'monthly', year?: number, month?: number, weekStart?: string) => 
+    ipcRenderer.invoke('get-spending-period', period, year, month, weekStart),
+  
+  // V2: Allocation rules
+  getAllocationRules: () => ipcRenderer.invoke('get-allocation-rules'),
+  createAllocationRule: (rule: any) => ipcRenderer.invoke('create-allocation-rule', rule),
+  updateAllocationRule: (id: number, rule: any) => ipcRenderer.invoke('update-allocation-rule', id, rule),
+  deleteAllocationRule: (id: number) => ipcRenderer.invoke('delete-allocation-rule', id),
 });
 

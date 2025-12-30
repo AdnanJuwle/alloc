@@ -30,6 +30,7 @@ interface IncomeScenario {
 interface Transaction {
   id: number;
   goal_id: number | null;
+  category_id: number | null; // V2: Category for expenses
   amount: number;
   transaction_type: string;
   description: string | null;
@@ -40,6 +41,43 @@ interface Transaction {
   actual_amount?: number | null;
   acknowledged?: boolean;
   acknowledged_at?: string | null;
+}
+
+// V2: Category system
+interface Category {
+  id: number;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// V2: Budget system
+interface Budget {
+  id: number;
+  category_id: number;
+  monthly_limit: number;
+  warning_threshold: number; // Percentage (0-100)
+  is_hard_limit: boolean;
+  year: number;
+  month: number; // 1-12
+  created_at: string;
+  updated_at: string;
+}
+
+// V2: Allocation rules
+interface AllocationRule {
+  id: number;
+  name: string;
+  condition: string; // 'income_increase' | 'income_decrease' | 'rent_threshold' | 'savings_rate'
+  condition_value?: number | null;
+  action: string; // 'raise_savings' | 'adjust_category' | 'flag_risk'
+  action_value?: number | null;
+  target_category_id?: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Database {
@@ -56,6 +94,13 @@ interface Database {
     month: number;
     acknowledgedAt: string;
   }>;
+  // V2: Categories and budgets
+  categories?: Category[];
+  budgets?: Budget[];
+  allocation_rules?: AllocationRule[];
+  nextCategoryId?: number;
+  nextBudgetId?: number;
+  nextRuleId?: number;
 }
 
 let db: Database | null = null;
@@ -91,6 +136,12 @@ export function initializeDatabase() {
   if (!database.nextScenarioId) database.nextScenarioId = 1;
   if (!database.nextTransactionId) database.nextTransactionId = 1;
   if (!database.acknowledged_deviations) database.acknowledged_deviations = [];
+  if (!database.categories) database.categories = [];
+  if (!database.budgets) database.budgets = [];
+  if (!database.allocation_rules) database.allocation_rules = [];
+  if (!database.nextCategoryId) database.nextCategoryId = 1;
+  if (!database.nextBudgetId) database.nextBudgetId = 1;
+  if (!database.nextRuleId) database.nextRuleId = 1;
   
   db = database;
   saveDatabase();
@@ -106,6 +157,12 @@ function createEmptyDatabase(): Database {
     nextScenarioId: 1,
     nextTransactionId: 1,
     acknowledged_deviations: [],
+    categories: [],
+    budgets: [],
+    allocation_rules: [],
+    nextCategoryId: 1,
+    nextBudgetId: 1,
+    nextRuleId: 1,
   };
 }
 
@@ -233,4 +290,134 @@ export function insertTransaction(transaction: Omit<Transaction, 'id'>): number 
 export function findIncomeScenarioById(id: number): IncomeScenario | null {
   const database = getDatabase();
   return database.income_scenarios.find(s => s.id === id) || null;
+}
+
+// V2: Category functions
+export function queryCategories(): Category[] {
+  const database = getDatabase();
+  return [...(database.categories || [])].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function insertCategory(category: Omit<Category, 'id' | 'created_at' | 'updated_at'>): number {
+  const database = getDatabase();
+  if (!database.categories) database.categories = [];
+  if (!database.nextCategoryId) database.nextCategoryId = 1;
+  
+  const newCategory: Category = {
+    ...category,
+    id: database.nextCategoryId++,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  database.categories.push(newCategory);
+  saveDatabase();
+  return newCategory.id;
+}
+
+export function updateCategory(id: number, updates: Partial<Category>): void {
+  const database = getDatabase();
+  const category = database.categories?.find(c => c.id === id);
+  if (category) {
+    Object.assign(category, updates, { updated_at: new Date().toISOString() });
+    saveDatabase();
+  }
+}
+
+export function deleteCategory(id: number): void {
+  const database = getDatabase();
+  if (database.categories) {
+    database.categories = database.categories.filter(c => c.id !== id);
+    saveDatabase();
+  }
+}
+
+// V2: Budget functions
+export function queryBudgets(year?: number, month?: number): Budget[] {
+  const database = getDatabase();
+  let budgets = [...(database.budgets || [])];
+  
+  if (year !== undefined) {
+    budgets = budgets.filter(b => b.year === year);
+  }
+  if (month !== undefined) {
+    budgets = budgets.filter(b => b.month === month);
+  }
+  
+  return budgets.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    if (a.month !== b.month) return b.month - a.month;
+    return a.category_id - b.category_id;
+  });
+}
+
+export function insertBudget(budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>): number {
+  const database = getDatabase();
+  if (!database.budgets) database.budgets = [];
+  if (!database.nextBudgetId) database.nextBudgetId = 1;
+  
+  const newBudget: Budget = {
+    ...budget,
+    id: database.nextBudgetId++,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  database.budgets.push(newBudget);
+  saveDatabase();
+  return newBudget.id;
+}
+
+export function updateBudget(id: number, updates: Partial<Budget>): void {
+  const database = getDatabase();
+  const budget = database.budgets?.find(b => b.id === id);
+  if (budget) {
+    Object.assign(budget, updates, { updated_at: new Date().toISOString() });
+    saveDatabase();
+  }
+}
+
+export function deleteBudget(id: number): void {
+  const database = getDatabase();
+  if (database.budgets) {
+    database.budgets = database.budgets.filter(b => b.id !== id);
+    saveDatabase();
+  }
+}
+
+// V2: Allocation rule functions
+export function queryAllocationRules(): AllocationRule[] {
+  const database = getDatabase();
+  return [...(database.allocation_rules || [])].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function insertAllocationRule(rule: Omit<AllocationRule, 'id' | 'created_at' | 'updated_at'>): number {
+  const database = getDatabase();
+  if (!database.allocation_rules) database.allocation_rules = [];
+  if (!database.nextRuleId) database.nextRuleId = 1;
+  
+  const newRule: AllocationRule = {
+    ...rule,
+    id: database.nextRuleId++,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  database.allocation_rules.push(newRule);
+  saveDatabase();
+  return newRule.id;
+}
+
+export function updateAllocationRule(id: number, updates: Partial<AllocationRule>): void {
+  const database = getDatabase();
+  const rule = database.allocation_rules?.find(r => r.id === id);
+  if (rule) {
+    Object.assign(rule, updates, { updated_at: new Date().toISOString() });
+    saveDatabase();
+  }
+}
+
+export function deleteAllocationRule(id: number): void {
+  const database = getDatabase();
+  if (database.allocation_rules) {
+    database.allocation_rules = database.allocation_rules.filter(r => r.id !== id);
+    saveDatabase();
+  }
 }

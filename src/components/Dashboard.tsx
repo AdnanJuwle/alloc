@@ -1,16 +1,133 @@
 import { useState, useEffect } from 'react';
-import { Target, TrendingUp, Calendar, AlertCircle, Shield } from 'lucide-react';
-import { Goal } from '../types';
+import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter } from 'lucide-react';
+import { Goal, SpendingPeriod, SpendingAlert, Category } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
 export function Dashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [spendingData, setSpendingData] = useState<SpendingPeriod | null>(null);
+  const [alerts, setAlerts] = useState<SpendingAlert[]>([]);
+  const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly'>('monthly');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryFormData, setCategoryFormData] = useState<Partial<Category>>({
+    name: '',
+    icon: '',
+    color: '#007aff',
+  });
 
   useEffect(() => {
     loadGoals();
     loadTransactions();
-  }, []);
+    loadCategories();
+    loadSpendingData();
+    loadAlerts();
+  }, [selectedPeriod, selectedYear, selectedMonth, selectedCategoryFilter]);
+
+  const loadCategories = async () => {
+    try {
+      const data = await electronAPI.getCategories();
+      setCategories(data.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        icon: c.icon || undefined,
+        color: c.color || undefined,
+        createdAt: c.created_at,
+        updatedAt: c.updated_at,
+      })));
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const handleCategorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const categoryData = {
+      name: categoryFormData.name!,
+      icon: categoryFormData.icon || undefined,
+      color: categoryFormData.color || undefined,
+    };
+
+    if (editingCategory?.id) {
+      await electronAPI.updateCategory(editingCategory.id, categoryData);
+    } else {
+      await electronAPI.createCategory(categoryData);
+    }
+
+    await loadCategories();
+    handleCloseCategoryModal();
+  };
+
+  const handleCategoryEdit = (category: Category) => {
+    setEditingCategory(category);
+    setCategoryFormData({
+      name: category.name,
+      icon: category.icon || '',
+      color: category.color || '#007aff',
+    });
+    setShowCategoryModal(true);
+  };
+
+  const handleCategoryDelete = async (id: number) => {
+    if (confirm('Are you sure you want to delete this category? This will not delete transactions, but they will lose their category association.')) {
+      await electronAPI.deleteCategory(id);
+      await loadCategories();
+    }
+  };
+
+  const handleCloseCategoryModal = () => {
+    setShowCategoryModal(false);
+    setEditingCategory(null);
+    setCategoryFormData({
+      name: '',
+      icon: '',
+      color: '#007aff',
+    });
+  };
+
+  const predefinedColors = [
+    '#007aff', '#34c759', '#ff9500', '#ff3b30', '#af52de',
+    '#ff2d55', '#5856d6', '#5ac8fa', '#ffcc00', '#8e8e93'
+  ];
+
+  const loadSpendingData = async () => {
+    try {
+      const data = await electronAPI.getSpendingPeriod(selectedPeriod, selectedYear, selectedMonth);
+      let spendingData = {
+        period: data.period,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        totalSpending: data.totalSpending,
+        byCategory: data.byCategory,
+      };
+      
+      // Filter by category if selected
+      if (selectedCategoryFilter) {
+        spendingData.byCategory = spendingData.byCategory.filter(c => c.categoryId === selectedCategoryFilter);
+        spendingData.totalSpending = spendingData.byCategory.reduce((sum, c) => sum + c.amount, 0);
+      }
+      
+      setSpendingData(spendingData);
+    } catch (error) {
+      console.error('Error loading spending data:', error);
+    }
+  };
+
+  const loadAlerts = async () => {
+    try {
+      const now = new Date();
+      const data = await electronAPI.getSpendingAlerts(now.getFullYear(), now.getMonth() + 1);
+      setAlerts(data);
+    } catch (error) {
+      console.error('Error loading alerts:', error);
+    }
+  };
 
   const loadGoals = async () => {
     const data = await electronAPI.getGoals();
@@ -113,6 +230,45 @@ export function Dashboard() {
     .filter(g => hasStarted(g))
     .reduce((sum, g) => sum + (g.monthlyContribution || 0), 0);
 
+  // Calculate expense totals
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+  
+  const monthExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense') return false;
+    const txDate = new Date(t.date);
+    return txDate >= monthStart && txDate <= monthEnd;
+  });
+  
+  const totalMonthExpenses = monthExpenses.reduce((sum, t) => sum + (t.amount || 0), 0);
+  
+  // Get recent transactions (last 5)
+  const recentTransactions = transactions
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5);
+
+  const getCategoryColor = (index: number) => {
+    const colors = [
+      '#007aff', '#34c759', '#ff9500', '#ff3b30', '#af52de',
+      '#ff2d55', '#5856d6', '#5ac8fa', '#ffcc00', '#8e8e93'
+    ];
+    return colors[index % colors.length];
+  };
+
+  const getAlertColor = (alertType: string) => {
+    switch (alertType) {
+      case 'overspent':
+        return '#ff3b30';
+      case 'limit_reached':
+        return '#ff9500';
+      case 'warning':
+        return '#ffcc00';
+      default:
+        return '#8e8e93';
+    }
+  };
+
   const urgentGoals = goals.filter(g => {
     // Only consider goals that have started
     if (!hasStarted(g)) {
@@ -131,7 +287,8 @@ export function Dashboard() {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
             <Target size={20} style={{ color: '#007aff' }} />
@@ -151,6 +308,21 @@ export function Dashboard() {
           <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
             of ₹{totalTarget.toLocaleString()}
           </div>
+        </div>
+
+        <div className="card" style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+            <TrendingDown size={20} style={{ color: '#ff3b30' }} />
+            <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>This Month Expenses</div>
+          </div>
+          <div style={{ fontSize: '2rem', fontWeight: 600, color: '#ff3b30' }}>
+            ₹{totalMonthExpenses.toLocaleString()}
+          </div>
+          {spendingData && (
+            <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+              {selectedPeriod === 'weekly' ? 'This Week' : 'This Month'}
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: '1.5rem' }}>
@@ -175,7 +347,405 @@ export function Dashboard() {
             {urgentGoals.length}
           </div>
         </div>
+
+        {alerts.length > 0 && (
+          <div className="card" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+              <Bell size={20} style={{ color: '#ff9500' }} />
+              <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Budget Alerts</div>
+            </div>
+            <div style={{ fontSize: '2rem', fontWeight: 600, color: '#ff9500' }}>
+              {alerts.length}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+              Categories need attention
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Budget Alerts Section */}
+      {alerts.length > 0 && (
+        <div className="card" style={{ marginBottom: '2rem' }}>
+          <div className="card-header">
+            <h2>Budget Alerts</h2>
+          </div>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {alerts.map((alert, idx) => (
+              <div
+                key={idx}
+                style={{
+                  border: `2px solid ${getAlertColor(alert.alertType)}`,
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  background: 'white',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                  <AlertCircle size={20} style={{ color: getAlertColor(alert.alertType) }} />
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                      {alert.categoryName}
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>
+                      {alert.alertType === 'overspent' && `Overspent by ₹${(alert.currentSpending - alert.budgetLimit).toLocaleString()}`}
+                      {alert.alertType === 'limit_reached' && 'Limit reached'}
+                      {alert.alertType === 'warning' && `${alert.percentageUsed.toFixed(1)}% of budget used`}
+                      {alert.daysRemaining > 0 && ` • ${alert.daysRemaining} days remaining`}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 600, fontSize: '1.125rem', color: getAlertColor(alert.alertType) }}>
+                    ₹{alert.currentSpending.toLocaleString()} / ₹{alert.budgetLimit.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Spending Overview Section */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
+        {/* Spending Summary */}
+        <div className="card">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <h2>Spending Overview</h2>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                className={selectedPeriod === 'monthly' ? 'btn btn-primary' : 'btn btn-secondary'}
+                onClick={() => setSelectedPeriod('monthly')}
+                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+              >
+                Monthly
+              </button>
+              <button
+                className={selectedPeriod === 'weekly' ? 'btn btn-primary' : 'btn btn-secondary'}
+                onClick={() => setSelectedPeriod('weekly')}
+                style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+              >
+                Weekly
+              </button>
+            </div>
+          </div>
+          
+          {selectedPeriod === 'monthly' && (
+            <div style={{ padding: '0 1.5rem 1rem 1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #e5e5ea', fontSize: '0.875rem' }}
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #e5e5ea', fontSize: '0.875rem' }}
+              >
+                {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((name, idx) => (
+                  <option key={idx + 1} value={idx + 1}>{name}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
+                <Filter size={16} style={{ color: '#8e8e93' }} />
+                <select
+                  value={selectedCategoryFilter || ''}
+                  onChange={(e) => setSelectedCategoryFilter(e.target.value ? parseInt(e.target.value) : null)}
+                  style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #e5e5ea', fontSize: '0.875rem' }}
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          {spendingData && spendingData.totalSpending > 0 ? (
+            <div>
+              <div style={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                color: 'white',
+                marginBottom: '1.5rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                  <TrendingDown size={24} />
+                  <div style={{ fontSize: '2rem', fontWeight: 700 }}>
+                    ₹{spendingData.totalSpending.toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.875rem', opacity: 0.9, marginTop: '0.25rem' }}>
+                  Total spending this {selectedPeriod}
+                </div>
+              </div>
+
+              {spendingData.byCategory.length > 0 && (
+                <div>
+                  <h3 style={{ marginBottom: '1rem', fontSize: '1rem', fontWeight: 600 }}>
+                    By Category
+                  </h3>
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    {spendingData.byCategory.slice(0, 5).map((item, index) => (
+                      <div
+                        key={item.categoryId}
+                        style={{
+                          border: '1px solid #e5e5ea',
+                          borderRadius: '8px',
+                          padding: '1rem',
+                          background: 'white',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div
+                              style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '50%',
+                                background: getCategoryColor(index),
+                              }}
+                            />
+                            <div style={{ fontWeight: 600 }}>{item.categoryName}</div>
+                          </div>
+                          <div style={{ fontWeight: 600 }}>
+                            ₹{item.amount.toLocaleString()}
+                          </div>
+                        </div>
+                        <div style={{
+                          width: '100%',
+                          height: '6px',
+                          background: '#e5e5ea',
+                          borderRadius: '4px',
+                          overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            width: `${item.percentage}%`,
+                            height: '100%',
+                            background: getCategoryColor(index),
+                            transition: 'width 0.3s ease',
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                          {item.percentage.toFixed(1)}% of total
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <PieChart size={48} style={{ color: '#8e8e93', marginBottom: '1rem' }} />
+              <h3>No spending data</h3>
+              <p>Record expenses with categories to see spending breakdown</p>
+            </div>
+          )}
+        </div>
+
+        {/* Recent Transactions */}
+        <div className="card">
+          <div className="card-header">
+            <h2>Recent Transactions</h2>
+          </div>
+          {recentTransactions.length > 0 ? (
+            <div style={{ display: 'grid', gap: '0.75rem' }}>
+              {recentTransactions.map((tx) => {
+                const isExpense = tx.transaction_type === 'expense';
+                const isIncome = tx.transaction_type === 'income';
+                
+                return (
+                  <div
+                    key={tx.id}
+                    style={{
+                      border: '1px solid #e5e5ea',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                      background: 'white',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                        {tx.description || (isExpense ? 'Expense' : isIncome ? 'Income' : 'Allocation')}
+                      </div>
+                      <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>
+                        {new Date(tx.date).toLocaleDateString()}
+                        {tx.category_id && (() => {
+                          const category = categories.find(c => c.id === tx.category_id);
+                          return category ? ` • ${category.name}` : '';
+                        })()}
+                      </div>
+                    </div>
+                    <div style={{ 
+                      fontWeight: 600, 
+                      fontSize: '1.125rem',
+                      color: isExpense ? '#ff3b30' : '#34c759'
+                    }}>
+                      {isExpense ? '-' : '+'}₹{tx.amount.toLocaleString()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <DollarSign size={48} style={{ color: '#8e8e93', marginBottom: '1rem' }} />
+              <h3>No transactions yet</h3>
+              <p>Record your first transaction to see it here</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Categories Section */}
+      <div className="card" style={{ marginBottom: '2rem' }}>
+        <div className="card-header">
+          <h2>Categories</h2>
+          <button className="btn btn-primary" onClick={() => setShowCategoryModal(true)}>
+            <Plus size={16} style={{ marginRight: '0.5rem' }} />
+            Create Category
+          </button>
+        </div>
+        {categories.length === 0 ? (
+          <div className="empty-state">
+            <h3>No categories yet</h3>
+            <p>Create categories to organize your expenses (food, rent, travel, etc.)</p>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+            {categories.map((category) => (
+              <div
+                key={category.id}
+                style={{
+                  border: '1px solid #e5e5ea',
+                  borderRadius: '8px',
+                  padding: '1rem',
+                  background: 'white',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '6px',
+                      background: category.color || '#007aff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'white',
+                    }}
+                  >
+                    <Tag size={16} />
+                  </div>
+                  <div style={{ fontWeight: 600 }}>{category.name}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => handleCategoryEdit(category)}
+                    style={{ padding: '0.5rem' }}
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => category.id && handleCategoryDelete(category.id)}
+                    style={{ padding: '0.5rem' }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Category Modal */}
+      {showCategoryModal && (
+        <div className="modal-overlay" onClick={handleCloseCategoryModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingCategory ? 'Edit Category' : 'Create Category'}</h3>
+              <button className="close-btn" onClick={handleCloseCategoryModal}>×</button>
+            </div>
+            <form onSubmit={handleCategorySubmit}>
+              <div className="form-group">
+                <label>Category Name</label>
+                <input
+                  type="text"
+                  required
+                  value={categoryFormData.name}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, name: e.target.value })}
+                  placeholder="e.g., Food, Rent, Travel"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Icon (Optional)</label>
+                <input
+                  type="text"
+                  value={categoryFormData.icon}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, icon: e.target.value })}
+                  placeholder="e.g., 🍔, 🏠, ✈️"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Color</label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                  {predefinedColors.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setCategoryFormData({ ...categoryFormData, color })}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '6px',
+                        background: color,
+                        border: categoryFormData.color === color ? '2px solid #000' : '2px solid transparent',
+                        cursor: 'pointer',
+                      }}
+                    />
+                  ))}
+                </div>
+                <input
+                  type="color"
+                  value={categoryFormData.color}
+                  onChange={(e) => setCategoryFormData({ ...categoryFormData, color: e.target.value })}
+                  style={{ marginTop: '0.5rem', width: '100%', height: '40px' }}
+                />
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={handleCloseCategoryModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingCategory ? 'Update' : 'Create'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {goals.length > 0 ? (
         <div className="card">
