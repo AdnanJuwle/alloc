@@ -352,6 +352,23 @@ export async function getLLMChatResponse(
 - Scenario analysis ("what if" questions)
 - Spending pattern analysis
 - Goal tracking and recommendations
+
+IMPORTANT: When generating action blocks, use VALID JSON only. Do NOT include comments (// or /* */) inside JSON. All property names must be in double quotes. Example:
+
+<action>
+{
+  "type": "create_transaction",
+  "data": {
+    "transactionType": "expense",
+    "amount": 120,
+    "description": "Food expense",
+    "date": "2024-01-15T00:00:00.000Z",
+    "categoryId": 2,
+    "goalId": null
+  },
+  "description": "Adding a new transaction for food expense"
+}
+</action>
 - Budget advice
 - Financial planning
 
@@ -505,15 +522,47 @@ function parseLLMResponse(content: string): LLMChatResponse {
 
   for (const match of actionMatches) {
     try {
-      const actionData = JSON.parse(match[1].trim());
+      // Clean the JSON string - remove comments and fix common issues
+      let jsonString = match[1].trim();
+      
+      // Remove single-line comments (// ...)
+      jsonString = jsonString.replace(/\/\/.*$/gm, '');
+      
+      // Remove multi-line comments (/* ... */)
+      jsonString = jsonString.replace(/\/\*[\s\S]*?\*\//g, '');
+      
+      // Fix single quotes to double quotes (but be careful with strings)
+      // This is a simple approach - for production, use a proper JSON5 parser
+      jsonString = jsonString.replace(/'/g, '"');
+      
+      // Remove trailing commas
+      jsonString = jsonString.replace(/,(\s*[}\]])/g, '$1');
+      
+      console.log('Parsing cleaned JSON:', jsonString);
+      const actionData = JSON.parse(jsonString);
+      
       // Validate action type
       if (validActionTypes.includes(actionData.type)) {
         actions.push(actionData);
         // Remove this action block from text
         textContent = textContent.replace(match[0], '').trim();
+        console.log('Successfully parsed action:', actionData.type);
+      } else {
+        console.warn('Invalid action type:', actionData.type);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error parsing action JSON:', error);
+      console.error('Raw action block:', match[1]);
+      // Try to extract basic info even if JSON is malformed
+      try {
+        // Look for type field even in malformed JSON
+        const typeMatch = match[1].match(/"type"\s*:\s*"([^"]+)"/);
+        if (typeMatch && validActionTypes.includes(typeMatch[1])) {
+          console.warn('Could not parse full action, but found valid type:', typeMatch[1]);
+        }
+      } catch (e) {
+        // Ignore
+      }
     }
   }
 
