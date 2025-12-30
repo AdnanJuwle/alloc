@@ -113,6 +113,9 @@ export interface AutoSplitResult {
   grossIncome: number;
   netIncome: number;
   allocations: Allocation[];
+  goalAllocations?: Allocation[];
+  budgetAllocations?: Allocation[];
+  totalBudgetAmount?: number;
   freeSpend: number;
   totalAllocated: number;
 }

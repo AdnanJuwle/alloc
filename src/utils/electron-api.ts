@@ -13,7 +13,7 @@ export interface ElectronAPI {
   getTransactions: () => Promise<any[]>;
   createTransaction: (transaction: any) => Promise<number>;
   
-  calculateAutoSplit: (incomeAmount: number, scenarioId?: number) => Promise<any>;
+  calculateAutoSplit: (incomeAmount: number, scenarioId?: number, year?: number, month?: number) => Promise<any>;
   
   // V2: Deviation tracking
   detectDeviations: (year: number, month: number) => Promise<any[]>;

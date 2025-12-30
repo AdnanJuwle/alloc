@@ -227,11 +227,11 @@ export function AutoSplit() {
             </div>
           </div>
 
-          {result.allocations.length > 0 && (
-            <div>
+          {(result.goalAllocations && result.goalAllocations.length > 0) && (
+            <div style={{ marginBottom: '2rem' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Goal Allocations</h3>
               <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {result.allocations.map((allocation, index) => (
+                {result.goalAllocations.map((allocation, index) => (
                   <div
                     key={index}
                     style={{
@@ -278,10 +278,55 @@ export function AutoSplit() {
             </div>
           )}
 
-          {result.allocations.length === 0 && (
+          {(result.budgetAllocations && result.budgetAllocations.length > 0) && (
+            <div style={{ marginBottom: '2rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                Budget Allocations
+                {result.totalBudgetAmount !== undefined && (
+                  <span style={{ fontSize: '0.875rem', fontWeight: 400, color: '#8e8e93', marginLeft: '0.5rem' }}>
+                    (Total: ₹{result.totalBudgetAmount.toLocaleString()})
+                  </span>
+                )}
+              </h3>
+              <div style={{ display: 'grid', gap: '0.75rem' }}>
+                {result.budgetAllocations.map((allocation, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '1rem',
+                      background: allocation.isHardLimit ? '#ffe5e5' : '#e5f5ff',
+                      borderRadius: '8px',
+                      border: allocation.isHardLimit ? '1px solid #ff3b30' : '1px solid #007aff',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <DollarSign size={20} style={{ color: allocation.isHardLimit ? '#ff3b30' : '#007aff' }} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>
+                          {allocation.categoryName}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>
+                          {allocation.isHardLimit ? 'Hard Limit Budget' : 'Soft Limit Budget'}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: '1.125rem', color: '#1d1d1f' }}>
+                      ₹{allocation.amount.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(!result.goalAllocations || result.goalAllocations.length === 0) && 
+           (!result.budgetAllocations || result.budgetAllocations.length === 0) && (
             <div className="empty-state">
-              <h3>No goals configured</h3>
-              <p>Create goal buckets first to see automatic allocations</p>
+              <h3>No goals or budgets configured</h3>
+              <p>Create goal buckets and budgets first to see automatic allocations</p>
             </div>
           )}
         </div>

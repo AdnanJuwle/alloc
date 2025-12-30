@@ -125,7 +125,7 @@ ipcMain.handle('create-transaction', async (_, transaction) => {
 });
 
 // Auto-Split Logic
-ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
+ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId, year?, month?) => {
   // Get scenario if provided
   let scenario: any = null;
   if (scenarioId) {
@@ -138,8 +138,17 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
     netIncome = incomeAmount * (1 - (scenario.tax_rate / 100)) - scenario.fixed_expenses;
   }
   
+  // Get current year/month if not provided
+  const currentDate = new Date();
+  const targetYear = year || currentDate.getFullYear();
+  const targetMonth = month || currentDate.getMonth() + 1;
+  
   // Get all goals ordered by priority
   const goals = queryGoals();
+  
+  // Get budgets for the target month
+  const budgets = queryBudgets(targetYear, targetMonth);
+  const categories = queryCategories();
   
   // Helper function to check if a goal has started
   const hasGoalStarted = (goal: any): boolean => {
@@ -261,12 +270,40 @@ ipcMain.handle('calculate-auto-split', async (_, incomeAmount, scenarioId) => {
     }
   }
   
+  // Calculate budget allocations
+  const budgetAllocations: any[] = [];
+  let totalBudgetAmount = 0;
+  
+  for (const budget of budgets) {
+    const category = categories.find((c: any) => c.id === budget.category_id);
+    const categoryName = category ? category.name : 'Unknown Category';
+    
+    budgetAllocations.push({
+      budgetId: budget.id,
+      categoryId: budget.category_id,
+      categoryName: categoryName,
+      amount: budget.monthly_limit,
+      type: 'budget',
+      isHardLimit: budget.is_hard_limit
+    });
+    totalBudgetAmount += budget.monthly_limit;
+  }
+  
+  // Subtract budget amounts from remaining income
+  const remainingAfterBudgets = Math.max(0, remainingIncome - totalBudgetAmount);
+  
+  // Combine all allocations (goals + budgets)
+  const allAllocations = [...allocations, ...budgetAllocations];
+  
   return {
     grossIncome: incomeAmount,
     netIncome,
-    allocations,
-    freeSpend: Math.max(0, remainingIncome),
-    totalAllocated: netIncome - remainingIncome
+    allocations: allAllocations,
+    goalAllocations: allocations,
+    budgetAllocations: budgetAllocations,
+    totalBudgetAmount: totalBudgetAmount,
+    freeSpend: remainingAfterBudgets,
+    totalAllocated: netIncome - remainingAfterBudgets
   };
 });
 

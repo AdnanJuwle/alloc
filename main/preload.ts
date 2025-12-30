@@ -17,8 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTransactions: () => ipcRenderer.invoke('get-transactions'),
   createTransaction: (transaction: any) => ipcRenderer.invoke('create-transaction', transaction),
   
-  calculateAutoSplit: (incomeAmount: number, scenarioId?: number) => 
-    ipcRenderer.invoke('calculate-auto-split', incomeAmount, scenarioId),
+  calculateAutoSplit: (incomeAmount: number, scenarioId?: number, year?: number, month?: number) => 
+    ipcRenderer.invoke('calculate-auto-split', incomeAmount, scenarioId, year, month),
   
   // V2: Deviation tracking
   detectDeviations: (year: number, month: number) => ipcRenderer.invoke('detect-deviations', year, month),
