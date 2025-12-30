@@ -185,8 +185,10 @@ export function Forecasting() {
         // Remove from pending
         setPendingActions(prev => prev.filter((_, i) => i !== index));
         
-        // Refresh data
-        window.dispatchEvent(new CustomEvent('data-updated'));
+        // Refresh data - dispatch event with a small delay to ensure DB is updated
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('data-updated'));
+        }, 100);
       } else {
         // Add error message
         const errorMsg: ChatMessage = {
@@ -219,9 +221,18 @@ export function Forecasting() {
   };
 
   const handleConfirmAllActions = async () => {
-    for (let i = 0; i < pendingActions.length; i++) {
-      await handleConfirmAction(pendingActions[i], i);
+    const actionsToConfirm = [...pendingActions];
+    for (let i = 0; i < actionsToConfirm.length; i++) {
+      await handleConfirmAction(actionsToConfirm[i], i);
+      // Small delay between actions to ensure DB updates complete
+      if (i < actionsToConfirm.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     }
+    // Final refresh after all actions
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('data-updated'));
+    }, 300);
   };
 
   const handleRejectAllActions = () => {

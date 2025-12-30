@@ -41,6 +41,19 @@ export function Transactions() {
     loadFlexEvents();
   }, []);
 
+  // Listen for data updates from AI actions
+  useEffect(() => {
+    const handleDataUpdate = () => {
+      loadTransactions();
+      loadFlexEvents();
+      loadGoals();
+      loadCategories();
+    };
+    
+    window.addEventListener('data-updated', handleDataUpdate);
+    return () => window.removeEventListener('data-updated', handleDataUpdate);
+  }, []);
+
   const loadFlexEvents = async () => {
     const data = await electronAPI.getFlexEvents();
     setFlexEvents(data.map((fe: any) => ({
