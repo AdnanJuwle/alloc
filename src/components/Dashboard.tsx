@@ -32,6 +32,20 @@ export function Dashboard() {
     loadPlanHealth();
   }, [selectedPeriod, selectedYear, selectedMonth, selectedCategoryFilter]);
 
+  // Listen for data updates from AI actions
+  useEffect(() => {
+    const handleDataUpdate = () => {
+      loadGoals();
+      loadTransactions();
+      loadSpendingData();
+      loadAlerts();
+      loadPlanHealth();
+    };
+    
+    window.addEventListener('data-updated', handleDataUpdate);
+    return () => window.removeEventListener('data-updated', handleDataUpdate);
+  }, []);
+
   const loadPlanHealth = async () => {
     try {
       const data = await electronAPI.calculatePlanHealth();

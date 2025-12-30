@@ -280,6 +280,14 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+export interface LLMChatResponse {
+  content: string;
+  actions?: Array<{
+    type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget';
+    data: any;
+  }>;
+}
+
 export async function getLLMChatResponse(
   messages: ChatMessage[],
   financialContext: {
@@ -288,6 +296,7 @@ export async function getLLMChatResponse(
     monthlyExpenses: number;
     monthlySavings: number;
     goals: Array<{
+      id?: number;
       name: string;
       currentAmount: number;
       targetAmount: number;
@@ -297,6 +306,7 @@ export async function getLLMChatResponse(
       onTrack: boolean;
     }>;
     spendingPatterns: Array<{
+      categoryId?: number;
       categoryName: string;
       averageMonthly: number;
       trend: string;
@@ -310,13 +320,18 @@ export async function getLLMChatResponse(
       categoryName?: string;
     }>;
     budgets: Array<{
+      categoryId?: number;
       categoryName: string;
       monthlyLimit: number;
       currentSpending: number;
       percentageUsed: number;
     }>;
+    categories: Array<{
+      id: number;
+      name: string;
+    }>;
   }
-): Promise<string | null> {
+): Promise<LLMChatResponse | null> {
   const settings = loadSettings();
   const provider = settings.llmProvider || 'ollama'; // Default to Ollama (free)
   
@@ -351,7 +366,39 @@ ${financialContext.budgets.map(b => `- ${b.categoryName}: ₹${b.currentSpending
 Recent Transactions (last 5):
 ${financialContext.recentTransactions.slice(0, 5).map(t => `- ${t.type}: ₹${t.amount.toLocaleString()} - ${t.description || 'No description'} (${new Date(t.date).toLocaleDateString()})`).join('\n')}
 
-Provide helpful, actionable advice. Be conversational and friendly. Use emojis sparingly. When doing calculations, show your work. Always reference specific numbers from their data.`;
+Provide helpful, actionable advice. Be conversational and friendly. Use emojis sparingly. When doing calculations, show your work. Always reference specific numbers from their data.
+
+IMPORTANT: When the user asks you to create a transaction, goal, or perform any action, you MUST include a JSON action block at the end of your response in this exact format:
+
+<action>
+{
+  "type": "create_transaction",
+  "data": {
+    "transactionType": "expense|income|allocation",
+    "amount": 1000,
+    "description": "Transaction description",
+    "date": "2024-01-15",
+    "categoryId": 1,
+    "goalId": 1
+  }
+}
+</action>
+
+Available action types:
+- create_transaction: Create a new transaction (expense, income, or allocation to goal)
+  Required fields: transactionType, amount, description
+  Optional: date (defaults to today), categoryId (for expenses), goalId (for allocations)
+- create_goal: Create a new savings goal
+- update_goal: Update an existing goal
+- create_budget: Create a budget for a category
+
+Categories available:
+${financialContext.categories.map(c => `- ${c.name} (ID: ${c.id})`).join('\n')}
+
+Goals available:
+${financialContext.goals.map(g => `- ${g.name} (ID: ${g.id || 'N/A'})`).join('\n')}
+
+If the user asks you to save/record/create a transaction, you MUST include the action block.`;
 
   // Convert chat messages to API format
   const apiMessages = [
@@ -366,7 +413,9 @@ Provide helpful, actionable advice. Be conversational and friendly. Use emojis s
     // Use Ollama (free, local)
     const ollamaUrl = settings.ollamaUrl || 'http://localhost:11434';
     const ollamaModel = settings.ollamaModel || 'llama3';
-    return await callOllamaAPI(apiMessages, ollamaModel, ollamaUrl);
+    const ollamaResponse = await callOllamaAPI(apiMessages, ollamaModel, ollamaUrl);
+    if (!ollamaResponse) return null;
+    return parseLLMResponse(ollamaResponse);
   } else if (provider === 'openai') {
     // Use OpenAI (paid)
     const client = getOpenAIClient();
@@ -382,13 +431,40 @@ Provide helpful, actionable advice. Be conversational and friendly. Use emojis s
         max_tokens: 1500,
       });
 
-      return response.choices[0]?.message?.content || null;
-    } catch (error) {
-      console.error('Error calling OpenAI API for chat:', error);
-      return null;
-    }
+    const content = response.choices[0]?.message?.content || '';
+    return parseLLMResponse(content);
+  } catch (error) {
+    console.error('Error calling OpenAI API for chat:', error);
+    return null;
+  }
   }
 
   return null;
+}
+
+function parseLLMResponse(content: string): LLMChatResponse {
+  // Try to extract action from <action> tags
+  const actionMatch = content.match(/<action>([\s\S]*?)<\/action>/);
+  let actions: Array<{ type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget'; data: any }> | undefined = undefined;
+  let textContent = content;
+
+  if (actionMatch) {
+    try {
+      const actionData = JSON.parse(actionMatch[1].trim());
+      // Validate action type
+      if (['create_transaction', 'create_goal', 'update_goal', 'create_budget'].includes(actionData.type)) {
+        actions = [actionData as { type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget'; data: any }];
+        // Remove action block from text
+        textContent = content.replace(/<action>[\s\S]*?<\/action>/, '').trim();
+      }
+    } catch (error) {
+      console.error('Error parsing action JSON:', error);
+    }
+  }
+
+  return {
+    content: textContent,
+    actions,
+  };
 }
 

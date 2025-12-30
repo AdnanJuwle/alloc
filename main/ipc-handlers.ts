@@ -1467,6 +1467,7 @@ ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
       .reduce((sum, t) => sum + t.amount, 0);
     
     return {
+      categoryId: budget.category_id,
       categoryName: category?.name || 'Unknown',
       monthlyLimit: budget.monthly_limit,
       currentSpending: spending,
@@ -1479,10 +1480,14 @@ ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
     monthlyIncome: netIncome,
     monthlyExpenses: averageMonthlyExpenses,
     monthlySavings: averageMonthlySavings,
-    goals: goalForecasts,
+    goals: goalForecasts.map(g => ({
+      ...g,
+      id: goals.find(goal => goal.name === g.name)?.id,
+    })),
     spendingPatterns,
     recentTransactions,
     budgets: budgetStatus,
+    categories: categories.map(c => ({ id: c.id, name: c.name })),
   };
   
   const response = await getLLMChatResponse(messages, financialContext);
@@ -1490,6 +1495,99 @@ ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
   if (!response) {
     return { error: 'Failed to get response from AI. Please check your API key in Settings.' };
   }
+
+  // Execute any actions requested by the LLM
+  const actionResults: any[] = [];
+  if (response.actions) {
+    for (const action of response.actions) {
+      try {
+        if (action.type === 'create_transaction') {
+          const transactionData = action.data;
+          const transactionId = insertTransaction({
+            goal_id: transactionData.goalId || null,
+            category_id: transactionData.categoryId || null,
+            amount: transactionData.amount,
+            transaction_type: transactionData.transactionType,
+            description: transactionData.description || null,
+            date: transactionData.date || new Date().toISOString(),
+            deviation_type: null,
+            planned_amount: null,
+            actual_amount: transactionData.amount,
+            acknowledged: false,
+            acknowledged_at: null,
+          });
+          actionResults.push({
+            type: 'create_transaction',
+            success: true,
+            id: transactionId,
+            message: `Transaction created successfully (ID: ${transactionId})`,
+          });
+        } else if (action.type === 'create_goal') {
+          const goalData = action.data;
+          const goalId = insertGoal({
+            name: goalData.name,
+            target_amount: goalData.targetAmount,
+            start_date: goalData.startDate || undefined,
+            deadline: goalData.deadline,
+            priority_weight: goalData.priorityWeight || 5,
+            monthly_contribution: goalData.monthlyContribution || 0,
+            current_amount: goalData.currentAmount || 0,
+            is_emergency_fund: goalData.isEmergencyFund || false,
+          });
+          actionResults.push({
+            type: 'create_goal',
+            success: true,
+            id: goalId,
+            message: `Goal "${goalData.name}" created successfully (ID: ${goalId})`,
+          });
+        } else if (action.type === 'update_goal') {
+          if (action.data.id) {
+            updateGoal(action.data.id, {
+              name: action.data.name,
+              target_amount: action.data.targetAmount,
+              start_date: action.data.startDate,
+              deadline: action.data.deadline,
+              priority_weight: action.data.priorityWeight,
+              monthly_contribution: action.data.monthlyContribution,
+              current_amount: action.data.currentAmount,
+              is_emergency_fund: action.data.isEmergencyFund,
+            });
+            actionResults.push({
+              type: 'update_goal',
+              success: true,
+              id: action.data.id,
+              message: `Goal updated successfully`,
+            });
+          }
+        } else if (action.type === 'create_budget') {
+          const budgetData = action.data;
+          const budgetId = insertBudget({
+            category_id: budgetData.categoryId,
+            monthly_limit: budgetData.monthlyLimit,
+            warning_threshold: budgetData.warningThreshold || 80,
+            is_hard_limit: budgetData.isHardLimit || false,
+            year: budgetData.year || new Date().getFullYear(),
+            month: budgetData.month || new Date().getMonth() + 1,
+          });
+          actionResults.push({
+            type: 'create_budget',
+            success: true,
+            id: budgetId,
+            message: `Budget created successfully (ID: ${budgetId})`,
+          });
+        }
+      } catch (error: any) {
+        actionResults.push({
+          type: action.type,
+          success: false,
+          error: error.message || 'Unknown error',
+        });
+      }
+    }
+  }
   
-  return { content: response };
+  return { 
+    content: response.content,
+    actions: actionResults.length > 0 ? actionResults : undefined,
+  };
 });

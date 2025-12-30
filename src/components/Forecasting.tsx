@@ -128,9 +128,23 @@ export function Forecasting() {
     try {
       const response = await electronAPI.llmChat(newMessages);
       
+      let assistantContent = response.error ? `Error: ${response.error}` : response.content;
+      
+      // Add action results to the message if any
+      if (response.actions && response.actions.length > 0) {
+        const actionMessages = response.actions.map((action: any) => {
+          if (action.success) {
+            return `✓ ${action.message || `${action.type} completed successfully`}`;
+          } else {
+            return `✗ ${action.type} failed: ${action.error || 'Unknown error'}`;
+          }
+        });
+        assistantContent += '\n\n' + actionMessages.join('\n');
+      }
+      
       const assistantMsg: ChatMessage = {
         role: 'assistant',
-        content: response.error ? `Error: ${response.error}` : response.content,
+        content: assistantContent,
         timestamp: new Date().toISOString(),
       };
       
@@ -139,6 +153,12 @@ export function Forecasting() {
       assistantMsg.id = assistantMsgId;
       
       setMessages(prev => [...prev, assistantMsg]);
+      
+      // If actions were performed, trigger a refresh of other components
+      if (response.actions && response.actions.length > 0) {
+        // Dispatch a custom event that other components can listen to
+        window.dispatchEvent(new CustomEvent('data-updated'));
+      }
     } catch (error) {
       console.error('Error getting LLM response:', error);
       const errorMsg: ChatMessage = {
