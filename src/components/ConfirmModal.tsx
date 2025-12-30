@@ -1,3 +1,4 @@
+import React from 'react';
 import { X } from 'lucide-react';
 
 interface ConfirmModalProps {
@@ -58,4 +59,5 @@ export function ConfirmModal({
     </div>
   );
 }
+
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { IncomeScenario } from '../types';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 export function IncomeSimulator() {
   const [scenarios, setScenarios] = useState<IncomeScenario[]>([]);

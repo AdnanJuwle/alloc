@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, Edit2, Trash2 } from 'lucide-react';
 import { Goal, Transaction, FlexEvent } from '../types';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 type ViewMode = 'transactions' | 'flex-events';
 
