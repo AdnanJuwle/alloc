@@ -169,9 +169,18 @@ export function Forecasting() {
 
   const handleConfirmAction = async (action: any, index: number) => {
     try {
-      const result = await electronAPI.executeLLMAction(action);
+      console.log('Executing action:', JSON.stringify(action, null, 2));
       
-      if (result.success) {
+      // Fix date format if needed
+      if (action.data && action.data.date && !action.data.date.includes('T')) {
+        // Convert YYYY-MM-DD to ISO string
+        action.data.date = new Date(action.data.date + 'T00:00:00').toISOString();
+      }
+      
+      const result = await electronAPI.executeLLMAction(action);
+      console.log('Action result:', result);
+      
+      if (result && result.success) {
         // Add success message
         const successMsg: ChatMessage = {
           role: 'assistant',
@@ -185,10 +194,11 @@ export function Forecasting() {
         // Remove from pending
         setPendingActions(prev => prev.filter((_, i) => i !== index));
         
-        // Refresh data - dispatch event with a small delay to ensure DB is updated
+        // Refresh data - dispatch event with a delay to ensure DB is updated
         setTimeout(() => {
+          console.log('Dispatching data-updated event');
           window.dispatchEvent(new CustomEvent('data-updated'));
-        }, 100);
+        }, 500);
       } else {
         // Add error message
         const errorMsg: ChatMessage = {

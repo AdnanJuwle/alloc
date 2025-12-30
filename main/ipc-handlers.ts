@@ -1512,19 +1512,30 @@ ipcMain.handle('execute-llm-action', async (_, action: any) => {
   try {
     if (action.type === 'create_transaction') {
       const transactionData = action.data;
+      
+      // Handle date - convert to ISO string if it's just a date string
+      let transactionDate = transactionData.date || new Date().toISOString();
+      if (transactionDate && !transactionDate.includes('T')) {
+        // If it's just a date (YYYY-MM-DD), convert to ISO string
+        transactionDate = new Date(transactionDate + 'T00:00:00').toISOString();
+      }
+      
       const transactionId = insertTransaction({
         goal_id: transactionData.goalId || null,
         category_id: transactionData.categoryId || null,
         amount: transactionData.amount,
         transaction_type: transactionData.transactionType,
         description: transactionData.description || null,
-        date: transactionData.date || new Date().toISOString(),
+        date: transactionDate,
         deviation_type: null,
         planned_amount: null,
         actual_amount: transactionData.amount,
         acknowledged: false,
         acknowledged_at: null,
       });
+      
+      console.log('Transaction created:', { id: transactionId, data: transactionData });
+      
       return {
         success: true,
         id: transactionId,

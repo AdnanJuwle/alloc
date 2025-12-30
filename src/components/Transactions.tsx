@@ -44,6 +44,7 @@ export function Transactions() {
   // Listen for data updates from AI actions
   useEffect(() => {
     const handleDataUpdate = () => {
+      console.log('Transactions: Received data-updated event, refreshing...');
       loadTransactions();
       loadFlexEvents();
       loadGoals();
@@ -92,8 +93,13 @@ export function Transactions() {
   };
 
   const loadTransactions = async () => {
-    const data = await electronAPI.getTransactions();
-    setTransactions(data.map(transformTransaction));
+    try {
+      const data = await electronAPI.getTransactions();
+      console.log('Loaded transactions:', data.length);
+      setTransactions(data.map(transformTransaction));
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+    }
   };
 
   const transformTransaction = (tx: any): Transaction => ({
