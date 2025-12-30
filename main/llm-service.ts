@@ -283,8 +283,15 @@ export interface ChatMessage {
 export interface LLMChatResponse {
   content: string;
   actions?: Array<{
-    type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget';
+    type: 'create_transaction' | 'update_transaction' | 'delete_transaction' |
+          'create_goal' | 'update_goal' | 'delete_goal' |
+          'create_category' | 'update_category' | 'delete_category' |
+          'create_budget' | 'update_budget' | 'delete_budget' |
+          'create_income_scenario' | 'update_income_scenario' | 'delete_income_scenario' |
+          'create_allocation_rule' | 'update_allocation_rule' | 'delete_allocation_rule' |
+          'create_flex_event' | 'update_flex_event' | 'delete_flex_event';
     data: any;
+    description?: string; // Human-readable description of what will happen
   }>;
 }
 
@@ -384,13 +391,32 @@ IMPORTANT: When the user asks you to create a transaction, goal, or perform any 
 }
 </action>
 
-Available action types:
+Available action types (ALWAYS ask user for confirmation before executing):
 - create_transaction: Create a new transaction (expense, income, or allocation to goal)
-  Required fields: transactionType, amount, description
+  Required: transactionType, amount, description
   Optional: date (defaults to today), categoryId (for expenses), goalId (for allocations)
+- update_transaction: Update an existing transaction (requires id)
+- delete_transaction: Delete a transaction (requires id)
 - create_goal: Create a new savings goal
-- update_goal: Update an existing goal
+- update_goal: Update an existing goal (requires id)
+- delete_goal: Delete a goal (requires id)
+- create_category: Create a new expense category
+- update_category: Update a category (requires id)
+- delete_category: Delete a category (requires id)
 - create_budget: Create a budget for a category
+- update_budget: Update a budget (requires id)
+- delete_budget: Delete a budget (requires id)
+- create_income_scenario: Create a new income scenario
+- update_income_scenario: Update an income scenario (requires id)
+- delete_income_scenario: Delete an income scenario (requires id)
+- create_allocation_rule: Create a new allocation rule
+- update_allocation_rule: Update an allocation rule (requires id)
+- delete_allocation_rule: Delete an allocation rule (requires id)
+- create_flex_event: Create a flex event
+- update_flex_event: Update a flex event (requires id)
+- delete_flex_event: Delete a flex event (requires id)
+
+IMPORTANT: Always include a "description" field in actions that explains what will happen in plain language. The user must confirm before any action is executed.
 
 Categories available:
 ${financialContext.categories.map(c => `- ${c.name} (ID: ${c.id})`).join('\n')}
@@ -443,19 +469,39 @@ If the user asks you to save/record/create a transaction, you MUST include the a
 }
 
 function parseLLMResponse(content: string): LLMChatResponse {
-  // Try to extract action from <action> tags
-  const actionMatch = content.match(/<action>([\s\S]*?)<\/action>/);
-  let actions: Array<{ type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget'; data: any }> | undefined = undefined;
+  // Try to extract all action blocks (can be multiple)
+  const actionMatches = content.matchAll(/<action>([\s\S]*?)<\/action>/g);
+  let actions: Array<{ 
+    type: 'create_transaction' | 'update_transaction' | 'delete_transaction' |
+          'create_goal' | 'update_goal' | 'delete_goal' |
+          'create_category' | 'update_category' | 'delete_category' |
+          'create_budget' | 'update_budget' | 'delete_budget' |
+          'create_income_scenario' | 'update_income_scenario' | 'delete_income_scenario' |
+          'create_allocation_rule' | 'update_allocation_rule' | 'delete_allocation_rule' |
+          'create_flex_event' | 'update_flex_event' | 'delete_flex_event';
+    data: any;
+    description?: string;
+  }> = [];
   let textContent = content;
 
-  if (actionMatch) {
+  const validActionTypes = [
+    'create_transaction', 'update_transaction', 'delete_transaction',
+    'create_goal', 'update_goal', 'delete_goal',
+    'create_category', 'update_category', 'delete_category',
+    'create_budget', 'update_budget', 'delete_budget',
+    'create_income_scenario', 'update_income_scenario', 'delete_income_scenario',
+    'create_allocation_rule', 'update_allocation_rule', 'delete_allocation_rule',
+    'create_flex_event', 'update_flex_event', 'delete_flex_event',
+  ];
+
+  for (const match of actionMatches) {
     try {
-      const actionData = JSON.parse(actionMatch[1].trim());
+      const actionData = JSON.parse(match[1].trim());
       // Validate action type
-      if (['create_transaction', 'create_goal', 'update_goal', 'create_budget'].includes(actionData.type)) {
-        actions = [actionData as { type: 'create_transaction' | 'create_goal' | 'update_goal' | 'create_budget'; data: any }];
-        // Remove action block from text
-        textContent = content.replace(/<action>[\s\S]*?<\/action>/, '').trim();
+      if (validActionTypes.includes(actionData.type)) {
+        actions.push(actionData);
+        // Remove this action block from text
+        textContent = textContent.replace(match[0], '').trim();
       }
     } catch (error) {
       console.error('Error parsing action JSON:', error);
@@ -464,7 +510,7 @@ function parseLLMResponse(content: string): LLMChatResponse {
 
   return {
     content: textContent,
-    actions,
+    actions: actions.length > 0 ? actions : undefined,
   };
 }
 

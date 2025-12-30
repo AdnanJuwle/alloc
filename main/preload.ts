@@ -94,5 +94,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveChatMessage: (message: any) => ipcRenderer.invoke('save-chat-message', message),
   deleteChatMessage: (id: string) => ipcRenderer.invoke('delete-chat-message', id),
   clearChatMessages: () => ipcRenderer.invoke('clear-chat-messages'),
+  
+  // Execute LLM Actions
+  executeLLMAction: (action: any) => ipcRenderer.invoke('execute-llm-action', action),
 });
 

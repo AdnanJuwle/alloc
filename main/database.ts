@@ -318,6 +318,21 @@ export function insertTransaction(transaction: Omit<Transaction, 'id'>): number 
   return newTransaction.id;
 }
 
+export function updateTransaction(id: number, updates: Partial<Transaction>): void {
+  const database = getDatabase();
+  const transaction = database.transactions.find(t => t.id === id);
+  if (transaction) {
+    Object.assign(transaction, updates);
+    saveDatabase();
+  }
+}
+
+export function deleteTransaction(id: number): void {
+  const database = getDatabase();
+  database.transactions = database.transactions.filter(t => t.id !== id);
+  saveDatabase();
+}
+
 export function findIncomeScenarioById(id: number): IncomeScenario | null {
   const database = getDatabase();
   return database.income_scenarios.find(s => s.id === id) || null;

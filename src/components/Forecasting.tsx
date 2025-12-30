@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Lightbulb, Settings, Trash2 } from 'lucide-react';
+import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Lightbulb, Settings, Trash2, CheckCircle, X } from 'lucide-react';
 import { electronAPI } from '../utils/electron-api';
 
 interface ChatMessage {
@@ -24,6 +24,7 @@ export function Forecasting() {
   const [loading, setLoading] = useState(false);
   const [llmEnabled, setLlmEnabled] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(true);
+  const [pendingActions, setPendingActions] = useState<Array<{ type: string; data: any; description?: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,16 +131,10 @@ export function Forecasting() {
       
       let assistantContent = response.error ? `Error: ${response.error}` : response.content;
       
-      // Add action results to the message if any
+      // If there are actions, show them for confirmation instead of executing
       if (response.actions && response.actions.length > 0) {
-        const actionMessages = response.actions.map((action: any) => {
-          if (action.success) {
-            return `✓ ${action.message || `${action.type} completed successfully`}`;
-          } else {
-            return `✗ ${action.type} failed: ${action.error || 'Unknown error'}`;
-          }
-        });
-        assistantContent += '\n\n' + actionMessages.join('\n');
+        setPendingActions(response.actions);
+        assistantContent += '\n\n⚠️ I need your confirmation to perform the following actions:';
       }
       
       const assistantMsg: ChatMessage = {
@@ -153,12 +148,6 @@ export function Forecasting() {
       assistantMsg.id = assistantMsgId;
       
       setMessages(prev => [...prev, assistantMsg]);
-      
-      // If actions were performed, trigger a refresh of other components
-      if (response.actions && response.actions.length > 0) {
-        // Dispatch a custom event that other components can listen to
-        window.dispatchEvent(new CustomEvent('data-updated'));
-      }
     } catch (error) {
       console.error('Error getting LLM response:', error);
       const errorMsg: ChatMessage = {
@@ -176,6 +165,67 @@ export function Forecasting() {
 
   const handleQuickAction = (query: string) => {
     handleSend(query);
+  };
+
+  const handleConfirmAction = async (action: any, index: number) => {
+    try {
+      const result = await electronAPI.executeLLMAction(action);
+      
+      if (result.success) {
+        // Add success message
+        const successMsg: ChatMessage = {
+          role: 'assistant',
+          content: `✓ ${result.message || 'Action completed successfully'}`,
+          timestamp: new Date().toISOString(),
+        };
+        const successMsgId = await electronAPI.saveChatMessage(successMsg);
+        successMsg.id = successMsgId;
+        setMessages(prev => [...prev, successMsg]);
+        
+        // Remove from pending
+        setPendingActions(prev => prev.filter((_, i) => i !== index));
+        
+        // Refresh data
+        window.dispatchEvent(new CustomEvent('data-updated'));
+      } else {
+        // Add error message
+        const errorMsg: ChatMessage = {
+          role: 'assistant',
+          content: `✗ Action failed: ${result.error || 'Unknown error'}`,
+          timestamp: new Date().toISOString(),
+        };
+        const errorMsgId = await electronAPI.saveChatMessage(errorMsg);
+        errorMsg.id = errorMsgId;
+        setMessages(prev => [...prev, errorMsg]);
+        
+        // Remove from pending
+        setPendingActions(prev => prev.filter((_, i) => i !== index));
+      }
+    } catch (error: any) {
+      const errorMsg: ChatMessage = {
+        role: 'assistant',
+        content: `✗ Error executing action: ${error.message || 'Unknown error'}`,
+        timestamp: new Date().toISOString(),
+      };
+      const errorMsgId = await electronAPI.saveChatMessage(errorMsg);
+      errorMsg.id = errorMsgId;
+      setMessages(prev => [...prev, errorMsg]);
+      setPendingActions(prev => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleRejectAction = (index: number) => {
+    setPendingActions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleConfirmAllActions = async () => {
+    for (let i = 0; i < pendingActions.length; i++) {
+      await handleConfirmAction(pendingActions[i], i);
+    }
+  };
+
+  const handleRejectAllActions = () => {
+    setPendingActions([]);
   };
 
   return (
@@ -348,6 +398,81 @@ export function Forecasting() {
           )}
           
           <div ref={messagesEndRef} />
+          
+          {/* Pending Actions Confirmation */}
+          {pendingActions.length > 0 && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: '#fff3cd',
+              borderRadius: '8px',
+              border: '1px solid #ffcc00',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <AlertCircle size={20} style={{ color: '#ff9500' }} />
+                <div style={{ fontWeight: 600, flex: 1 }}>Pending Actions ({pendingActions.length})</div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleConfirmAllActions}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  >
+                    <CheckCircle size={14} style={{ marginRight: '0.25rem' }} />
+                    Confirm All
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleRejectAllActions}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                  >
+                    <X size={14} style={{ marginRight: '0.25rem' }} />
+                    Reject All
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                {pendingActions.map((action, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '0.75rem',
+                      background: 'white',
+                      borderRadius: '6px',
+                      border: '1px solid #e5e5ea',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+                        {action.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>
+                        {action.description || JSON.stringify(action.data, null, 2)}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handleConfirmAction(action, idx)}
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}
+                      >
+                        <CheckCircle size={12} />
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleRejectAction(idx)}
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           </div>
         )}
 

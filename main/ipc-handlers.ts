@@ -33,6 +33,8 @@ import {
   insertChatMessage,
   deleteChatMessage,
   clearChatMessages,
+  updateTransaction,
+  deleteTransaction,
 } from './database';
 import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis, getLLMChatResponse, ChatMessage, checkOllamaAvailable } from './llm-service';
 
@@ -1496,98 +1498,306 @@ ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
     return { error: 'Failed to get response from AI. Please check your API key in Settings.' };
   }
 
-  // Execute any actions requested by the LLM
-  const actionResults: any[] = [];
-  if (response.actions) {
-    for (const action of response.actions) {
-      try {
-        if (action.type === 'create_transaction') {
-          const transactionData = action.data;
-          const transactionId = insertTransaction({
-            goal_id: transactionData.goalId || null,
-            category_id: transactionData.categoryId || null,
-            amount: transactionData.amount,
-            transaction_type: transactionData.transactionType,
-            description: transactionData.description || null,
-            date: transactionData.date || new Date().toISOString(),
-            deviation_type: null,
-            planned_amount: null,
-            actual_amount: transactionData.amount,
-            acknowledged: false,
-            acknowledged_at: null,
-          });
-          actionResults.push({
-            type: 'create_transaction',
-            success: true,
-            id: transactionId,
-            message: `Transaction created successfully (ID: ${transactionId})`,
-          });
-        } else if (action.type === 'create_goal') {
-          const goalData = action.data;
-          const goalId = insertGoal({
-            name: goalData.name,
-            target_amount: goalData.targetAmount,
-            start_date: goalData.startDate || undefined,
-            deadline: goalData.deadline,
-            priority_weight: goalData.priorityWeight || 5,
-            monthly_contribution: goalData.monthlyContribution || 0,
-            current_amount: goalData.currentAmount || 0,
-            is_emergency_fund: goalData.isEmergencyFund || false,
-          });
-          actionResults.push({
-            type: 'create_goal',
-            success: true,
-            id: goalId,
-            message: `Goal "${goalData.name}" created successfully (ID: ${goalId})`,
-          });
-        } else if (action.type === 'update_goal') {
-          if (action.data.id) {
-            updateGoal(action.data.id, {
-              name: action.data.name,
-              target_amount: action.data.targetAmount,
-              start_date: action.data.startDate,
-              deadline: action.data.deadline,
-              priority_weight: action.data.priorityWeight,
-              monthly_contribution: action.data.monthlyContribution,
-              current_amount: action.data.currentAmount,
-              is_emergency_fund: action.data.isEmergencyFund,
-            });
-            actionResults.push({
-              type: 'update_goal',
-              success: true,
-              id: action.data.id,
-              message: `Goal updated successfully`,
-            });
-          }
-        } else if (action.type === 'create_budget') {
-          const budgetData = action.data;
-          const budgetId = insertBudget({
-            category_id: budgetData.categoryId,
-            monthly_limit: budgetData.monthlyLimit,
-            warning_threshold: budgetData.warningThreshold || 80,
-            is_hard_limit: budgetData.isHardLimit || false,
-            year: budgetData.year || new Date().getFullYear(),
-            month: budgetData.month || new Date().getMonth() + 1,
-          });
-          actionResults.push({
-            type: 'create_budget',
-            success: true,
-            id: budgetId,
-            message: `Budget created successfully (ID: ${budgetId})`,
-          });
-        }
-      } catch (error: any) {
-        actionResults.push({
-          type: action.type,
-          success: false,
-          error: error.message || 'Unknown error',
-        });
-      }
-    }
-  }
-  
+  // Return actions for user confirmation (don't execute automatically)
   return { 
     content: response.content,
-    actions: actionResults.length > 0 ? actionResults : undefined,
+    actions: response.actions || undefined,
   };
+});
+
+// Execute confirmed actions
+ipcMain.handle('execute-llm-action', async (_, action: any) => {
+  const actionResults: any[] = [];
+  
+  try {
+    if (action.type === 'create_transaction') {
+      const transactionData = action.data;
+      const transactionId = insertTransaction({
+        goal_id: transactionData.goalId || null,
+        category_id: transactionData.categoryId || null,
+        amount: transactionData.amount,
+        transaction_type: transactionData.transactionType,
+        description: transactionData.description || null,
+        date: transactionData.date || new Date().toISOString(),
+        deviation_type: null,
+        planned_amount: null,
+        actual_amount: transactionData.amount,
+        acknowledged: false,
+        acknowledged_at: null,
+      });
+      return {
+        success: true,
+        id: transactionId,
+        message: `Transaction created successfully`,
+      };
+    } else if (action.type === 'update_transaction') {
+      if (action.data.id) {
+        updateTransaction(action.data.id, {
+          goal_id: action.data.goalId || null,
+          category_id: action.data.categoryId || null,
+          amount: action.data.amount,
+          transaction_type: action.data.transactionType,
+          description: action.data.description || null,
+          date: action.data.date,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Transaction updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_transaction') {
+      if (action.data.id) {
+        deleteTransaction(action.data.id);
+        return {
+          success: true,
+          message: `Transaction deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_goal') {
+      const goalData = action.data;
+      const goalId = insertGoal({
+        name: goalData.name,
+        target_amount: goalData.targetAmount,
+        start_date: goalData.startDate || undefined,
+        deadline: goalData.deadline,
+        priority_weight: goalData.priorityWeight || 5,
+        monthly_contribution: goalData.monthlyContribution || 0,
+        current_amount: goalData.currentAmount || 0,
+        is_emergency_fund: goalData.isEmergencyFund || false,
+      });
+      return {
+        success: true,
+        id: goalId,
+        message: `Goal "${goalData.name}" created successfully`,
+      };
+    } else if (action.type === 'update_goal') {
+      if (action.data.id) {
+        updateGoal(action.data.id, {
+          name: action.data.name,
+          target_amount: action.data.targetAmount,
+          start_date: action.data.startDate,
+          deadline: action.data.deadline,
+          priority_weight: action.data.priorityWeight,
+          monthly_contribution: action.data.monthlyContribution,
+          current_amount: action.data.currentAmount,
+          is_emergency_fund: action.data.isEmergencyFund,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Goal updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_goal') {
+      if (action.data.id) {
+        deleteGoal(action.data.id);
+        return {
+          success: true,
+          message: `Goal deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_category') {
+      const categoryData = action.data;
+      const categoryId = insertCategory({
+        name: categoryData.name,
+        icon: categoryData.icon || null,
+        color: categoryData.color || '#007aff',
+      });
+      return {
+        success: true,
+        id: categoryId,
+        message: `Category "${categoryData.name}" created successfully`,
+      };
+    } else if (action.type === 'update_category') {
+      if (action.data.id) {
+        updateCategory(action.data.id, {
+          name: action.data.name,
+          icon: action.data.icon,
+          color: action.data.color,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Category updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_category') {
+      if (action.data.id) {
+        deleteCategory(action.data.id);
+        return {
+          success: true,
+          message: `Category deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_budget') {
+      const budgetData = action.data;
+      const budgetId = insertBudget({
+        category_id: budgetData.categoryId,
+        monthly_limit: budgetData.monthlyLimit,
+        warning_threshold: budgetData.warningThreshold || 80,
+        is_hard_limit: budgetData.isHardLimit || false,
+        year: budgetData.year || new Date().getFullYear(),
+        month: budgetData.month || new Date().getMonth() + 1,
+      });
+      return {
+        success: true,
+        id: budgetId,
+        message: `Budget created successfully`,
+      };
+    } else if (action.type === 'update_budget') {
+      if (action.data.id) {
+        updateBudget(action.data.id, {
+          category_id: action.data.categoryId,
+          monthly_limit: action.data.monthlyLimit,
+          warning_threshold: action.data.warningThreshold,
+          is_hard_limit: action.data.isHardLimit,
+          year: action.data.year,
+          month: action.data.month,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Budget updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_budget') {
+      if (action.data.id) {
+        deleteBudget(action.data.id);
+        return {
+          success: true,
+          message: `Budget deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_income_scenario') {
+      const scenarioData = action.data;
+      const scenarioId = insertIncomeScenario({
+        name: scenarioData.name,
+        monthly_income: scenarioData.monthlyIncome,
+        tax_rate: scenarioData.taxRate,
+        fixed_expenses: scenarioData.fixedExpenses,
+        scenario_type: scenarioData.scenarioType,
+      });
+      return {
+        success: true,
+        id: scenarioId,
+        message: `Income scenario "${scenarioData.name}" created successfully`,
+      };
+    } else if (action.type === 'update_income_scenario') {
+      if (action.data.id) {
+        updateIncomeScenario(action.data.id, {
+          name: action.data.name,
+          monthly_income: action.data.monthlyIncome,
+          tax_rate: action.data.taxRate,
+          fixed_expenses: action.data.fixedExpenses,
+          scenario_type: action.data.scenarioType,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Income scenario updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_income_scenario') {
+      if (action.data.id) {
+        deleteIncomeScenario(action.data.id);
+        return {
+          success: true,
+          message: `Income scenario deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_allocation_rule') {
+      const ruleData = action.data;
+      const ruleId = insertAllocationRule({
+        name: ruleData.name,
+        condition: ruleData.condition,
+        condition_value: ruleData.conditionValue || null,
+        action: ruleData.action,
+        action_value: ruleData.actionValue || null,
+        target_category_id: ruleData.targetCategoryId || null,
+        is_active: ruleData.isActive !== false,
+      });
+      return {
+        success: true,
+        id: ruleId,
+        message: `Allocation rule "${ruleData.name}" created successfully`,
+      };
+    } else if (action.type === 'update_allocation_rule') {
+      if (action.data.id) {
+        updateAllocationRule(action.data.id, {
+          name: action.data.name,
+          condition: action.data.condition,
+          condition_value: action.data.conditionValue,
+          action: action.data.action,
+          action_value: action.data.actionValue,
+          target_category_id: action.data.targetCategoryId,
+          is_active: action.data.isActive,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Allocation rule updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_allocation_rule') {
+      if (action.data.id) {
+        deleteAllocationRule(action.data.id);
+        return {
+          success: true,
+          message: `Allocation rule deleted successfully`,
+        };
+      }
+    } else if (action.type === 'create_flex_event') {
+      const flexEventData = action.data;
+      const flexEventId = insertFlexEvent({
+        date: flexEventData.date,
+        reason: flexEventData.reason,
+        amount: flexEventData.amount,
+        affected_goals: flexEventData.affectedGoals || [],
+        rebalancing_plan: JSON.stringify(flexEventData.rebalancingPlan || { pausedGoals: [], adjustedAllocations: [] }),
+        acknowledged: flexEventData.acknowledged || false,
+      });
+      return {
+        success: true,
+        id: flexEventId,
+        message: `Flex event created successfully`,
+      };
+    } else if (action.type === 'update_flex_event') {
+      if (action.data.id) {
+        updateFlexEvent(action.data.id, {
+          date: action.data.date,
+          reason: action.data.reason,
+          amount: action.data.amount,
+          affected_goals: action.data.affectedGoals,
+          rebalancing_plan: typeof action.data.rebalancingPlan === 'string' 
+            ? action.data.rebalancingPlan 
+            : JSON.stringify(action.data.rebalancingPlan),
+          acknowledged: action.data.acknowledged,
+        });
+        return {
+          success: true,
+          id: action.data.id,
+          message: `Flex event updated successfully`,
+        };
+      }
+    } else if (action.type === 'delete_flex_event') {
+      if (action.data.id) {
+        deleteFlexEvent(action.data.id);
+        return {
+          success: true,
+          message: `Flex event deleted successfully`,
+        };
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown action type',
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Unknown error',
+    };
+  }
 });

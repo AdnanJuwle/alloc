@@ -87,6 +87,9 @@ export interface ElectronAPI {
   saveChatMessage: (message: any) => Promise<string>;
   deleteChatMessage: (id: string) => Promise<void>;
   clearChatMessages: () => Promise<void>;
+  
+  // Execute LLM Actions
+  executeLLMAction: (action: any) => Promise<any>;
 }
 
 declare global {
