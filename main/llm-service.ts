@@ -375,7 +375,15 @@ ${financialContext.recentTransactions.slice(0, 5).map(t => `- ${t.type}: ₹${t.
 
 Provide helpful, actionable advice. Be conversational and friendly. Use emojis sparingly. When doing calculations, show your work. Always reference specific numbers from their data.
 
-IMPORTANT: When the user asks you to create a transaction, goal, or perform any action, you MUST include a JSON action block at the end of your response in this exact format:
+CRITICAL RULES FOR ACTIONS:
+1. ONLY create transactions when the user EXPLICITLY asks you to "save", "record", "add", or "create" a transaction
+2. DO NOT create transactions based on analysis or observations - only when explicitly requested
+3. DO NOT assume transactions need to be created from spending patterns or analysis
+4. When analyzing spending, just provide insights - do NOT create transactions automatically
+5. If the user says "I spent X on Y", that's just information - NOT a request to create a transaction
+6. Only create transactions when user says things like "Save this transaction", "Record this expense", "Add this to my transactions"
+
+IMPORTANT: When the user EXPLICITLY asks you to create a transaction, goal, or perform any action, you MUST include a JSON action block at the end of your response in this exact format:
 
 <action>
 {
@@ -387,7 +395,8 @@ IMPORTANT: When the user asks you to create a transaction, goal, or perform any 
     "date": "2024-01-15",
     "categoryId": 1,
     "goalId": 1
-  }
+  },
+  "description": "Human-readable description of what this action will do"
 }
 </action>
 
@@ -424,7 +433,7 @@ ${financialContext.categories.map(c => `- ${c.name} (ID: ${c.id})`).join('\n')}
 Goals available:
 ${financialContext.goals.map(g => `- ${g.name} (ID: ${g.id || 'N/A'})`).join('\n')}
 
-If the user asks you to save/record/create a transaction, you MUST include the action block.`;
+ONLY include action blocks when the user EXPLICITLY requests an action. Do NOT create transactions from analysis or observations.`;
 
   // Convert chat messages to API format
   const apiMessages = [
