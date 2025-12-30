@@ -40,6 +40,12 @@ export function BudgetsAndRules() {
     isActive: true,
   });
 
+  // Delete confirmation state
+  const [showDeleteBudgetConfirm, setShowDeleteBudgetConfirm] = useState(false);
+  const [budgetToDelete, setBudgetToDelete] = useState<number | null>(null);
+  const [showDeleteRuleConfirm, setShowDeleteRuleConfirm] = useState(false);
+  const [ruleToDelete, setRuleToDelete] = useState<number | null>(null);
+
   useEffect(() => {
     loadCategories();
     if (viewMode === 'budgets') {
