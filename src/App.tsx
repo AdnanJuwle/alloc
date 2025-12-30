@@ -6,11 +6,9 @@ import { Dashboard } from './components/Dashboard';
 import { Transactions } from './components/Transactions';
 import { Deviations } from './components/Deviations';
 import { BudgetsAndRules } from './components/BudgetsAndRules';
-import { FlexEvents } from './components/FlexEvents';
-import { PlanHealth } from './components/PlanHealth';
 import './App.css';
 
-type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations' | 'budgets-rules' | 'flex-events' | 'plan-health';
+type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations' | 'budgets-rules';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -65,18 +63,6 @@ function App() {
           >
             Budgets & Rules
           </button>
-          <button
-            className={activeTab === 'flex-events' ? 'active' : ''}
-            onClick={() => setActiveTab('flex-events')}
-          >
-            Flex Events
-          </button>
-          <button
-            className={activeTab === 'plan-health' ? 'active' : ''}
-            onClick={() => setActiveTab('plan-health')}
-          >
-            Plan Health
-          </button>
         </nav>
       </header>
       <main className="app-main">
@@ -87,8 +73,6 @@ function App() {
         {activeTab === 'transactions' && <Transactions />}
         {activeTab === 'deviations' && <Deviations />}
         {activeTab === 'budgets-rules' && <BudgetsAndRules />}
-        {activeTab === 'flex-events' && <FlexEvents />}
-        {activeTab === 'plan-health' && <PlanHealth />}
       </main>
     </div>
   );

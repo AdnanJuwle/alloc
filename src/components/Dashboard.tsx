@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter, Activity } from 'lucide-react';
+import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter, Activity, CheckCircle, XCircle } from 'lucide-react';
 import { Goal, SpendingPeriod, SpendingAlert, Category, PlanHealth } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
@@ -15,6 +15,7 @@ export function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<number | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showPlanHealthModal, setShowPlanHealthModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryFormData, setCategoryFormData] = useState<Partial<Category>>({
     name: '',
@@ -375,7 +376,23 @@ export function Dashboard() {
         )}
 
         {planHealth && (
-          <div className="card" style={{ padding: '1.5rem' }}>
+          <div 
+            className="card" 
+            style={{ 
+              padding: '1.5rem',
+              cursor: 'pointer',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+            }}
+            onClick={() => setShowPlanHealthModal(true)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '';
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
               <Activity size={20} style={{ 
                 color: planHealth.healthStatus === 'healthy' ? '#34c759' : 
@@ -393,7 +410,7 @@ export function Dashboard() {
               {planHealth.healthStatus}
             </div>
             <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
-              Efficiency: {planHealth.allocationEfficiency.toFixed(1)}%
+              Efficiency: {planHealth.allocationEfficiency.toFixed(1)}% • Click for details
             </div>
           </div>
         )}
@@ -931,6 +948,128 @@ export function Dashboard() {
           <div className="empty-state">
             <h3>No goals yet</h3>
             <p>Create your first goal bucket to get started</p>
+          </div>
+        </div>
+      )}
+
+      {/* Plan Health Modal */}
+      {showPlanHealthModal && planHealth && (
+        <div className="modal-overlay" onClick={() => setShowPlanHealthModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>Plan Health Details</h2>
+              <button className="close-btn" onClick={() => setShowPlanHealthModal(false)}>×</button>
+            </div>
+            <div style={{ padding: '1.5rem' }}>
+              {/* Overall Status */}
+              <div style={{ 
+                background: `linear-gradient(135deg, ${getAlertColor(planHealth.healthStatus === 'healthy' ? 'warning' : planHealth.healthStatus === 'warning' ? 'limit_reached' : 'overspent')}15 0%, ${getAlertColor(planHealth.healthStatus === 'healthy' ? 'warning' : planHealth.healthStatus === 'warning' ? 'limit_reached' : 'overspent')}05 100%)`,
+                borderRadius: '12px',
+                padding: '2rem',
+                textAlign: 'center',
+                marginBottom: '2rem',
+                border: `2px solid ${getAlertColor(planHealth.healthStatus === 'healthy' ? 'warning' : planHealth.healthStatus === 'warning' ? 'limit_reached' : 'overspent')}40`,
+              }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  {planHealth.healthStatus === 'healthy' ? (
+                    <CheckCircle size={48} style={{ color: '#34c759' }} />
+                  ) : planHealth.healthStatus === 'warning' ? (
+                    <AlertCircle size={48} style={{ color: '#ff9500' }} />
+                  ) : (
+                    <XCircle size={48} style={{ color: '#ff3b30' }} />
+                  )}
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'capitalize', color: getAlertColor(planHealth.healthStatus === 'healthy' ? 'warning' : planHealth.healthStatus === 'warning' ? 'limit_reached' : 'overspent') }}>
+                  {planHealth.healthStatus}
+                </div>
+                <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>
+                  Overall Plan Health Status
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <TrendingUp size={20} style={{ color: '#007aff' }} />
+                    <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Allocation Efficiency</div>
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 600, color: planHealth.allocationEfficiency >= 80 ? '#34c759' : planHealth.allocationEfficiency >= 60 ? '#ff9500' : '#ff3b30' }}>
+                    {planHealth.allocationEfficiency.toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                    % of income allocated to goals
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <AlertCircle size={20} style={{ color: '#ff9500' }} />
+                    <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Fragility Score</div>
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 600, color: planHealth.fragilityScore < 30 ? '#34c759' : planHealth.fragilityScore < 60 ? '#ff9500' : '#ff3b30' }}>
+                    {planHealth.fragilityScore.toFixed(1)}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                    Lower is better (0-100)
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <Activity size={20} style={{ color: '#34c759' }} />
+                    <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Slack Months</div>
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 600, color: planHealth.slackMonths > 2 ? '#34c759' : planHealth.slackMonths > 0 ? '#ff9500' : '#ff3b30' }}>
+                    {planHealth.slackMonths.toFixed(1)}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                    Buffer before deadlines
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    <TrendingDown size={20} style={{ color: '#ff3b30' }} />
+                    <div style={{ color: '#8e8e93', fontSize: '0.875rem' }}>Deviations (3 months)</div>
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 600, color: planHealth.deviationCount === 0 ? '#34c759' : planHealth.deviationCount < 3 ? '#ff9500' : '#ff3b30' }}>
+                    {planHealth.deviationCount}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginTop: '0.25rem' }}>
+                    Missed contributions
+                  </div>
+                </div>
+              </div>
+
+              {/* Goals Status */}
+              <div className="card">
+                <div className="card-header">
+                  <h3>Goals Status</h3>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', padding: '1.5rem' }}>
+                  <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+                    <div style={{ fontSize: '3rem', fontWeight: 700, color: '#34c759', marginBottom: '0.5rem' }}>
+                      {planHealth.onTrackGoals}
+                    </div>
+                    <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>On Track</div>
+                    <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>Goals meeting targets</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '1.5rem' }}>
+                    <div style={{ fontSize: '3rem', fontWeight: 700, color: '#ff3b30', marginBottom: '0.5rem' }}>
+                      {planHealth.behindGoals}
+                    </div>
+                    <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.25rem' }}>Behind Schedule</div>
+                    <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>Goals needing attention</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setShowPlanHealthModal(false)}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
