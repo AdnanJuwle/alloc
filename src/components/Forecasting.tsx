@@ -170,16 +170,28 @@ export function Forecasting() {
 
   const handleConfirmAction = async (action: any, index: number) => {
     try {
-      console.log('Executing action:', JSON.stringify(action, null, 2));
+      console.log('=== ACTION CONFIRMATION START ===');
+      console.log('Action to execute:', JSON.stringify(action, null, 2));
+      console.log('Action index:', index);
       
       // Fix date format if needed
-      if (action.data && action.data.date && !action.data.date.includes('T')) {
-        // Convert YYYY-MM-DD to ISO string
-        action.data.date = new Date(action.data.date + 'T00:00:00').toISOString();
+      if (action.data && action.data.date) {
+        if (!action.data.date.includes('T')) {
+          // Convert YYYY-MM-DD to ISO string
+          const dateStr = action.data.date;
+          action.data.date = new Date(dateStr + 'T00:00:00').toISOString();
+          console.log('Date converted from', dateStr, 'to', action.data.date);
+        }
+      } else {
+        // Use today's date if not provided
+        action.data.date = new Date().toISOString();
+        console.log('No date provided, using today:', action.data.date);
       }
       
+      console.log('Calling executeLLMAction with:', JSON.stringify(action, null, 2));
       const result = await electronAPI.executeLLMAction(action);
-      console.log('Action result:', result);
+      console.log('=== ACTION RESULT ===');
+      console.log('Result:', JSON.stringify(result, null, 2));
       
       if (result && result.success) {
         // Add success message
