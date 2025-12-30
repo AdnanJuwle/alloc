@@ -70,7 +70,9 @@
     "vite": "^5.0.8"
   },
   "dependencies": {
+    "dotenv": "^17.2.3",
     "lucide-react": "^0.303.0",
+    "openai": "^6.15.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.10.3"

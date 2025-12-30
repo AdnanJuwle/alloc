@@ -74,5 +74,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // V3: Smart suggestions
   getSmartSuggestions: () => ipcRenderer.invoke('get-smart-suggestions'),
+  
+  // V3: LLM-Enhanced Forecasting
+  getLLMForecastInsights: (monthsAhead?: number) => ipcRenderer.invoke('get-llm-forecast-insights', monthsAhead),
+  getLLMScenarioAnalysis: (scenario: any) => ipcRenderer.invoke('get-llm-scenario-analysis', scenario),
+  
+  // Settings
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (updates: any) => ipcRenderer.invoke('update-settings', updates),
 });
 

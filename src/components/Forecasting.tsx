@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Calendar, Target, Lightbulb, AlertCircle, TrendingDown, Plus, X } from 'lucide-react';
+import { TrendingUp, Calendar, Target, Lightbulb, AlertCircle, TrendingDown, Plus, X, Brain, Sparkles } from 'lucide-react';
 import { Forecast, GoalForecast, Scenario, ScenarioImpact, SpendingPattern, SmartSuggestion } from '../types';
 import { electronAPI } from '../utils/electron-api';
 
@@ -12,6 +12,8 @@ export function Forecasting() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [spendingPatterns, setSpendingPatterns] = useState<SpendingPattern[]>([]);
   const [suggestions, setSuggestions] = useState<SmartSuggestion[]>([]);
+  const [llmInsights, setLlmInsights] = useState<any>(null);
+  const [llmLoading, setLlmLoading] = useState(false);
   const [showScenarioModal, setShowScenarioModal] = useState(false);
   const [scenarioFormData, setScenarioFormData] = useState<Partial<Scenario>>({
     name: '',
@@ -27,7 +29,21 @@ export function Forecasting() {
     loadForecasts();
     loadSpendingPatterns();
     loadSuggestions();
+    loadLLMInsights();
   }, [monthsAhead]);
+
+  const loadLLMInsights = async () => {
+    setLlmLoading(true);
+    try {
+      const insights = await electronAPI.getLLMForecastInsights(monthsAhead);
+      setLlmInsights(insights);
+    } catch (error) {
+      console.error('Error loading LLM insights:', error);
+      setLlmInsights(null);
+    } finally {
+      setLlmLoading(false);
+    }
+  };
 
   const loadForecasts = async () => {
     setLoading(true);
@@ -234,6 +250,134 @@ export function Forecasting() {
                     ))}
                   </ul>
                 </div>
+
+                {/* LLM Insights */}
+                {llmLoading ? (
+                  <div style={{ 
+                    marginTop: '1.5rem', 
+                    padding: '1rem', 
+                    background: '#f5f5f7', 
+                    borderRadius: '8px',
+                    textAlign: 'center'
+                  }}>
+                    <Brain size={20} style={{ color: '#007aff', marginBottom: '0.5rem' }} />
+                    <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>Loading AI insights...</div>
+                  </div>
+                ) : llmInsights ? (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                      <Brain size={20} style={{ color: '#007aff' }} />
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>AI-Powered Insights</h3>
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        padding: '0.25rem 0.5rem', 
+                        background: '#007aff', 
+                        color: 'white', 
+                        borderRadius: '4px' 
+                      }}>
+                        Enhanced
+                      </span>
+                    </div>
+
+                    {llmInsights.insights && llmInsights.insights.length > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: '#8e8e93' }}>
+                          Key Insights
+                        </div>
+                        {llmInsights.insights.map((insight: string, idx: number) => (
+                          <div key={idx} style={{ 
+                            padding: '0.75rem', 
+                            marginBottom: '0.5rem', 
+                            background: '#f5f5f7', 
+                            borderRadius: '6px',
+                            fontSize: '0.875rem'
+                          }}>
+                            • {insight}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {llmInsights.recommendations && llmInsights.recommendations.length > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <Lightbulb size={16} style={{ color: '#ff9500' }} />
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#8e8e93' }}>
+                            Recommendations
+                          </div>
+                        </div>
+                        {llmInsights.recommendations.map((rec: string, idx: number) => (
+                          <div key={idx} style={{ 
+                            padding: '0.75rem', 
+                            marginBottom: '0.5rem', 
+                            background: '#fff3cd', 
+                            borderRadius: '6px',
+                            fontSize: '0.875rem'
+                          }}>
+                            • {rec}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {llmInsights.risks && llmInsights.risks.length > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <AlertCircle size={16} style={{ color: '#ff3b30' }} />
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#8e8e93' }}>
+                            Risks to Watch
+                          </div>
+                        </div>
+                        {llmInsights.risks.map((risk: string, idx: number) => (
+                          <div key={idx} style={{ 
+                            padding: '0.75rem', 
+                            marginBottom: '0.5rem', 
+                            background: '#ffe5e5', 
+                            borderRadius: '6px',
+                            fontSize: '0.875rem'
+                          }}>
+                            • {risk}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {llmInsights.opportunities && llmInsights.opportunities.length > 0 && (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <Sparkles size={16} style={{ color: '#34c759' }} />
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#8e8e93' }}>
+                            Opportunities
+                          </div>
+                        </div>
+                        {llmInsights.opportunities.map((opp: string, idx: number) => (
+                          <div key={idx} style={{ 
+                            padding: '0.75rem', 
+                            marginBottom: '0.5rem', 
+                            background: '#e5f5e5', 
+                            borderRadius: '6px',
+                            fontSize: '0.875rem'
+                          }}>
+                            • {opp}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ 
+                    marginTop: '1.5rem', 
+                    padding: '1rem', 
+                    background: '#f5f5f7', 
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    color: '#8e8e93',
+                    textAlign: 'center'
+                  }}>
+                    <Brain size={20} style={{ color: '#8e8e93', marginBottom: '0.5rem' }} />
+                    <div>Enable AI-Enhanced Forecasting in Settings for intelligent insights</div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="empty-state">

@@ -30,6 +30,7 @@ import {
   updateFlexEvent,
   deleteFlexEvent,
 } from './database';
+import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis } from './llm-service';
 
 // Goals
 ipcMain.handle('get-goals', async () => {
@@ -1195,4 +1196,118 @@ ipcMain.handle('get-smart-suggestions', async () => {
   }
   
   return suggestions;
+});
+
+// V3: LLM-Enhanced Forecasting
+ipcMain.handle('get-llm-forecast-insights', async (_, monthsAhead: number = 6) => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const incomeScenarios = queryIncomeScenarios();
+  const categories = queryCategories();
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  
+  if (!expectedScenario) {
+    return null;
+  }
+  
+  const now = new Date();
+  const currentBalance = goals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
+  const netIncome = expectedScenario.monthly_income * (1 - expectedScenario.tax_rate / 100) - expectedScenario.fixed_expenses;
+  
+  // Calculate average monthly expenses
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const recentExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense') return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  const totalExpenses = recentExpenses.reduce((sum, t) => sum + t.amount, 0);
+  const averageMonthlyExpenses = totalExpenses / 3;
+  const averageMonthlySavings = netIncome - averageMonthlyExpenses;
+  
+  // Get goal forecasts
+  const goalForecasts: any[] = [];
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+    
+    const goalTransactions = transactions.filter(t => {
+      if (!t.goal_id || t.goal_id !== goal.id) return false;
+      if (t.transaction_type !== 'allocation') return false;
+      const txDate = new Date(t.date);
+      return txDate >= threeMonthsAgo;
+    });
+    const totalContributions = goalTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const currentMonthly = goalTransactions.length > 0 ? totalContributions / 3 : (goal.monthly_contribution || 0);
+    
+    goalForecasts.push({
+      name: goal.name,
+      currentAmount: goal.current_amount || 0,
+      targetAmount: goal.target_amount,
+      deadline: goal.deadline,
+      requiredMonthly,
+      currentMonthly,
+    });
+  }
+  
+  // Get spending patterns
+  const spendingPatterns: any[] = [];
+  const categoryMap = new Map<number, number[]>();
+  for (const expense of recentExpenses) {
+    if (expense.category_id) {
+      if (!categoryMap.has(expense.category_id)) {
+        categoryMap.set(expense.category_id, []);
+      }
+      categoryMap.get(expense.category_id)!.push(expense.amount);
+    }
+  }
+  
+  for (const [categoryId, amounts] of categoryMap.entries()) {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category || amounts.length < 3) continue;
+    
+    const averageMonthly = amounts.reduce((sum, a) => sum + a, 0) / 3;
+    const firstHalf = amounts.slice(0, Math.floor(amounts.length / 2));
+    const secondHalf = amounts.slice(Math.floor(amounts.length / 2));
+    const firstHalfAvg = firstHalf.reduce((sum, a) => sum + a, 0) / firstHalf.length;
+    const secondHalfAvg = secondHalf.reduce((sum, a) => sum + a, 0) / secondHalf.length;
+    
+    let trend = 'stable';
+    if (secondHalfAvg > firstHalfAvg * 1.1) trend = 'increasing';
+    else if (secondHalfAvg < firstHalfAvg * 0.9) trend = 'decreasing';
+    
+    spendingPatterns.push({
+      categoryName: category.name,
+      averageMonthly,
+      trend,
+    });
+  }
+  
+  const financialData = {
+    currentBalance,
+    monthlyIncome: netIncome,
+    monthlyExpenses: averageMonthlyExpenses,
+    monthlySavings: averageMonthlySavings,
+    goals: goalForecasts,
+    spendingPatterns,
+    monthsAhead,
+  };
+  
+  return await getLLMForecastInsights(financialData);
+});
+
+ipcMain.handle('get-llm-scenario-analysis', async (_, scenario: any) => {
+  return await getLLMScenarioAnalysis(scenario);
+});
+
+// Settings Management
+ipcMain.handle('get-settings', async () => {
+  return getSettings();
+});
+
+ipcMain.handle('update-settings', async (_, updates: any) => {
+  updateSettings(updates);
+  return getSettings();
 });

@@ -67,6 +67,14 @@ export interface ElectronAPI {
   
   // V3: Smart suggestions
   getSmartSuggestions: () => Promise<any[]>;
+  
+  // V3: LLM-Enhanced Forecasting
+  getLLMForecastInsights: (monthsAhead?: number) => Promise<any>;
+  getLLMScenarioAnalysis: (scenario: any) => Promise<string | null>;
+  
+  // Settings
+  getSettings: () => Promise<any>;
+  updateSettings: (updates: any) => Promise<any>;
 }
 
 declare global {
