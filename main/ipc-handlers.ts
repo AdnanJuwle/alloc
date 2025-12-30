@@ -1507,10 +1507,11 @@ ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
 
 // Execute confirmed actions
 ipcMain.handle('execute-llm-action', async (_, action: any) => {
-  const actionResults: any[] = [];
+  console.log('IPC: execute-llm-action called with:', JSON.stringify(action, null, 2));
   
   try {
     if (action.type === 'create_transaction') {
+      console.log('IPC: Creating transaction with data:', action.data);
       const transactionData = action.data;
       
       // Handle date - convert to ISO string if it's just a date string
@@ -1534,7 +1535,13 @@ ipcMain.handle('execute-llm-action', async (_, action: any) => {
         acknowledged_at: null,
       });
       
-      console.log('Transaction created:', { id: transactionId, data: transactionData });
+      console.log('IPC: Transaction created successfully:', { id: transactionId, data: transactionData });
+      
+      // Verify transaction was saved
+      const allTransactions = queryTransactions();
+      console.log('IPC: Total transactions in DB:', allTransactions.length);
+      const newTransaction = allTransactions.find(t => t.id === transactionId);
+      console.log('IPC: New transaction found in DB:', newTransaction);
       
       return {
         success: true,

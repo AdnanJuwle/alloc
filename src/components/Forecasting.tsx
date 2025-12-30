@@ -480,20 +480,28 @@ export function Forecasting() {
                         {JSON.stringify(action.data, null, 2)}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'column' }}>
                       <button
                         className="btn btn-primary"
-                        onClick={() => handleConfirmAction(action, idx)}
+                        onClick={() => {
+                          console.log('Confirm button clicked for action:', action, 'index:', idx);
+                          handleConfirmAction(action, idx);
+                        }}
                         style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}
                       >
-                        <CheckCircle size={12} />
+                        <CheckCircle size={12} style={{ marginRight: '0.25rem' }} />
+                        Confirm
                       </button>
                       <button
                         className="btn btn-secondary"
-                        onClick={() => handleRejectAction(idx)}
+                        onClick={() => {
+                          console.log('Reject button clicked for action index:', idx);
+                          handleRejectAction(idx);
+                        }}
                         style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem' }}
                       >
-                        <X size={12} />
+                        <X size={12} style={{ marginRight: '0.25rem' }} />
+                        Reject
                       </button>
                     </div>
                   </div>
