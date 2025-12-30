@@ -133,6 +133,7 @@ export function Forecasting() {
       
       // If there are actions, show them for confirmation instead of executing
       if (response.actions && response.actions.length > 0) {
+        console.log('Received actions from LLM:', response.actions);
         setPendingActions(response.actions);
         assistantContent += '\n\n⚠️ I need your confirmation to perform the following actions:';
       }
@@ -469,8 +470,11 @@ export function Forecasting() {
                       <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.25rem' }}>
                         {action.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#8e8e93' }}>
-                        {action.description || JSON.stringify(action.data, null, 2)}
+                      <div style={{ fontSize: '0.75rem', color: '#8e8e93', marginBottom: '0.25rem' }}>
+                        {action.description || 'No description provided'}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#8e8e93', fontFamily: 'monospace', background: '#f5f5f7', padding: '0.25rem', borderRadius: '4px' }}>
+                        {JSON.stringify(action.data, null, 2)}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
