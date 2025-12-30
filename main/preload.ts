@@ -82,5 +82,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (updates: any) => ipcRenderer.invoke('update-settings', updates),
+  
+  // V3: LLM Chat
+  llmChat: (messages: any[]) => ipcRenderer.invoke('llm-chat', messages),
 });
 

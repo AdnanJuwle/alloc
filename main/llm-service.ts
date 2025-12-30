@@ -227,3 +227,104 @@ Provide a concise analysis focusing on whether this scenario is advisable and it
   }
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: string;
+}
+
+export async function getLLMChatResponse(
+  messages: ChatMessage[],
+  financialContext: {
+    currentBalance: number;
+    monthlyIncome: number;
+    monthlyExpenses: number;
+    monthlySavings: number;
+    goals: Array<{
+      name: string;
+      currentAmount: number;
+      targetAmount: number;
+      deadline: string;
+      requiredMonthly: number;
+      currentMonthly: number;
+      onTrack: boolean;
+    }>;
+    spendingPatterns: Array<{
+      categoryName: string;
+      averageMonthly: number;
+      trend: string;
+      trendPercentage: number;
+    }>;
+    recentTransactions: Array<{
+      type: string;
+      amount: number;
+      description: string;
+      date: string;
+      categoryName?: string;
+    }>;
+    budgets: Array<{
+      categoryName: string;
+      monthlyLimit: number;
+      currentSpending: number;
+      percentageUsed: number;
+    }>;
+  }
+): Promise<string | null> {
+  const client = getOpenAIClient();
+  if (!client) {
+    return null;
+  }
+
+  try {
+    const systemPrompt = `You are a friendly, knowledgeable financial advisor helping users with their personal finance. You have access to their financial data and can help with:
+
+- Forecasting and predictions
+- Scenario analysis ("what if" questions)
+- Spending pattern analysis
+- Goal tracking and recommendations
+- Budget advice
+- Financial planning
+
+Current Financial Context:
+- Current Balance: ₹${financialContext.currentBalance.toLocaleString()}
+- Monthly Income: ₹${financialContext.monthlyIncome.toLocaleString()}
+- Monthly Expenses: ₹${financialContext.monthlyExpenses.toLocaleString()}
+- Monthly Savings: ₹${financialContext.monthlySavings.toLocaleString()}
+
+Goals:
+${financialContext.goals.map(g => `- ${g.name}: ₹${g.currentAmount.toLocaleString()}/₹${g.targetAmount.toLocaleString()} (Need ₹${g.requiredMonthly.toLocaleString()}/month, saving ₹${g.currentMonthly.toLocaleString()}/month, deadline: ${new Date(g.deadline).toLocaleDateString()}, ${g.onTrack ? 'on track' : 'behind schedule'})`).join('\n')}
+
+Spending Patterns:
+${financialContext.spendingPatterns.map(p => `- ${p.categoryName}: ₹${p.averageMonthly.toLocaleString()}/month (${p.trend} trend, ${p.trendPercentage > 0 ? '+' : ''}${p.trendPercentage.toFixed(1)}%)`).join('\n')}
+
+Budgets:
+${financialContext.budgets.map(b => `- ${b.categoryName}: ₹${b.currentSpending.toLocaleString()}/₹${b.monthlyLimit.toLocaleString()} (${b.percentageUsed.toFixed(1)}% used)`).join('\n')}
+
+Recent Transactions (last 5):
+${financialContext.recentTransactions.slice(0, 5).map(t => `- ${t.type}: ₹${t.amount.toLocaleString()} - ${t.description || 'No description'} (${new Date(t.date).toLocaleDateString()})`).join('\n')}
+
+Provide helpful, actionable advice. Be conversational and friendly. Use emojis sparingly. When doing calculations, show your work. Always reference specific numbers from their data.`;
+
+    // Convert chat messages to OpenAI format
+    const openAIMessages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...messages.map(msg => ({
+        role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+        content: msg.content,
+      })),
+    ];
+
+    const response = await client.chat.completions.create({
+      model: loadSettings().llmModel || 'gpt-3.5-turbo',
+      messages: openAIMessages,
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    return response.choices[0]?.message?.content || null;
+  } catch (error) {
+    console.error('Error calling OpenAI API for chat:', error);
+    return null;
+  }
+}
+

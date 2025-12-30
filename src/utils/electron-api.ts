@@ -75,6 +75,9 @@ export interface ElectronAPI {
   // Settings
   getSettings: () => Promise<any>;
   updateSettings: (updates: any) => Promise<any>;
+  
+  // V3: LLM Chat
+  llmChat: (messages: any[]) => Promise<any>;
 }
 
 declare global {

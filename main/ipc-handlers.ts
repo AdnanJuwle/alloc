@@ -30,7 +30,7 @@ import {
   updateFlexEvent,
   deleteFlexEvent,
 } from './database';
-import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis } from './llm-service';
+import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis, getLLMChatResponse, ChatMessage } from './llm-service';
 
 // Goals
 ipcMain.handle('get-goals', async () => {
@@ -1310,4 +1310,155 @@ ipcMain.handle('get-settings', async () => {
 ipcMain.handle('update-settings', async (_, updates: any) => {
   updateSettings(updates);
   return getSettings();
+});
+
+// V3: LLM Chat-based Forecasting
+ipcMain.handle('llm-chat', async (_, messages: ChatMessage[]) => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const incomeScenarios = queryIncomeScenarios();
+  const categories = queryCategories();
+  const budgets = queryBudgets();
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  
+  if (!expectedScenario) {
+    return { error: 'Please configure an expected income scenario first.' };
+  }
+  
+  const now = new Date();
+  const currentBalance = goals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
+  const netIncome = expectedScenario.monthly_income * (1 - expectedScenario.tax_rate / 100) - expectedScenario.fixed_expenses;
+  
+  // Calculate average monthly expenses
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const recentExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense') return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  const totalExpenses = recentExpenses.reduce((sum, t) => sum + t.amount, 0);
+  const averageMonthlyExpenses = totalExpenses / 3;
+  const averageMonthlySavings = netIncome - averageMonthlyExpenses;
+  
+  // Get goal forecasts
+  const goalForecasts: any[] = [];
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+    
+    const goalTransactions = transactions.filter(t => {
+      if (!t.goal_id || t.goal_id !== goal.id) return false;
+      if (t.transaction_type !== 'allocation') return false;
+      const txDate = new Date(t.date);
+      return txDate >= threeMonthsAgo;
+    });
+    const totalContributions = goalTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const currentMonthly = goalTransactions.length > 0 ? totalContributions / 3 : (goal.monthly_contribution || 0);
+    
+    goalForecasts.push({
+      name: goal.name,
+      currentAmount: goal.current_amount || 0,
+      targetAmount: goal.target_amount,
+      deadline: goal.deadline,
+      requiredMonthly,
+      currentMonthly,
+      onTrack: currentMonthly >= requiredMonthly * 0.9,
+    });
+  }
+  
+  // Get spending patterns
+  const spendingPatterns: any[] = [];
+  const categoryMap = new Map<number, number[]>();
+  for (const expense of recentExpenses) {
+    if (expense.category_id) {
+      if (!categoryMap.has(expense.category_id)) {
+        categoryMap.set(expense.category_id, []);
+      }
+      categoryMap.get(expense.category_id)!.push(expense.amount);
+    }
+  }
+  
+  for (const [categoryId, amounts] of categoryMap.entries()) {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category || amounts.length < 3) continue;
+    
+    const averageMonthly = amounts.reduce((sum, a) => sum + a, 0) / 3;
+    const firstHalf = amounts.slice(0, Math.floor(amounts.length / 2));
+    const secondHalf = amounts.slice(Math.floor(amounts.length / 2));
+    const firstHalfAvg = firstHalf.reduce((sum, a) => sum + a, 0) / firstHalf.length;
+    const secondHalfAvg = secondHalf.reduce((sum, a) => sum + a, 0) / secondHalf.length;
+    
+    let trend = 'stable';
+    let trendPercentage = 0;
+    if (secondHalfAvg > firstHalfAvg * 1.1) {
+      trend = 'increasing';
+      trendPercentage = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
+    } else if (secondHalfAvg < firstHalfAvg * 0.9) {
+      trend = 'decreasing';
+      trendPercentage = ((firstHalfAvg - secondHalfAvg) / firstHalfAvg) * 100;
+    }
+    
+    spendingPatterns.push({
+      categoryName: category.name,
+      averageMonthly,
+      trend,
+      trendPercentage: Math.round(trendPercentage * 100) / 100,
+    });
+  }
+  
+  // Get recent transactions
+  const recentTransactions = transactions
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 10)
+    .map(t => ({
+      type: t.transaction_type,
+      amount: t.amount,
+      description: t.description || 'No description',
+      date: t.date,
+      categoryName: t.category_id ? categories.find(c => c.id === t.category_id)?.name : undefined,
+    }));
+  
+  // Get budget status
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  const monthExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense' || !t.category_id) return false;
+    const txDate = new Date(t.date);
+    return txDate >= currentMonth && txDate <= monthEnd;
+  });
+  
+  const budgetStatus = budgets.map(budget => {
+    const category = categories.find(c => c.id === budget.category_id);
+    const spending = monthExpenses
+      .filter(t => t.category_id === budget.category_id)
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    return {
+      categoryName: category?.name || 'Unknown',
+      monthlyLimit: budget.monthly_limit,
+      currentSpending: spending,
+      percentageUsed: (spending / budget.monthly_limit) * 100,
+    };
+  });
+  
+  const financialContext = {
+    currentBalance,
+    monthlyIncome: netIncome,
+    monthlyExpenses: averageMonthlyExpenses,
+    monthlySavings: averageMonthlySavings,
+    goals: goalForecasts,
+    spendingPatterns,
+    recentTransactions,
+    budgets: budgetStatus,
+  };
+  
+  const response = await getLLMChatResponse(messages, financialContext);
+  
+  if (!response) {
+    return { error: 'Failed to get response from AI. Please check your API key in Settings.' };
+  }
+  
+  return { content: response };
 });
