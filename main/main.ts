@@ -60,6 +60,19 @@ function createWindow() {
     setTimeout(tryLoad, 2000);
     // Always open DevTools in development mode
     mainWindow.webContents.openDevTools();
+    
+    // Add keyboard shortcut to toggle DevTools (Ctrl+Shift+I or Cmd+Option+I)
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+        if (mainWindow) {
+          if (mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.webContents.closeDevTools();
+          } else {
+            mainWindow.webContents.openDevTools();
+          }
+        }
+      }
+    });
   } else {
     // In production, files are packaged in app.asar
     // app.getAppPath() returns the path to the app.asar file or the app directory
