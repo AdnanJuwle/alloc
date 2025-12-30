@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ConfirmModal } from './ConfirmModal';
 import { Plus, Edit2, Trash2, AlertTriangle, DollarSign, Settings, AlertCircle } from 'lucide-react';
 import { Budget, Category, SpendingAlert, AllocationRule } from '../types';
 import { electronAPI } from '../utils/electron-api';
@@ -134,12 +135,9 @@ export function BudgetsAndRules() {
     setShowBudgetModal(true);
   };
 
-  const handleBudgetDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this budget?')) {
-      await electronAPI.deleteBudget(id);
-      await loadBudgets();
-      await loadAlerts();
-    }
+  const handleBudgetDelete = (id: number) => {
+    setBudgetToDelete(id);
+    setShowDeleteBudgetConfirm(true);
   };
 
   const handleCloseBudgetModal = () => {
@@ -193,11 +191,9 @@ export function BudgetsAndRules() {
     setShowRuleModal(true);
   };
 
-  const handleRuleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this rule?')) {
-      await electronAPI.deleteAllocationRule(id);
-      await loadRules();
-    }
+  const handleRuleDelete = (id: number) => {
+    setRuleToDelete(id);
+    setShowDeleteRuleConfirm(true);
   };
 
   const handleCloseRuleModal = () => {
@@ -436,12 +432,57 @@ export function BudgetsAndRules() {
                               background: percentageUsed >= 100 ? '#ff3b30' : percentageUsed >= budget.warningThreshold! ? '#ff9500' : '#34c759',
                               transition: 'width 0.3s ease',
                             }} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Budget Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteBudgetConfirm}
+        title="Delete Budget"
+        message="Are you sure you want to delete this budget?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          if (budgetToDelete) {
+            await electronAPI.deleteBudget(budgetToDelete);
+            await loadBudgets();
+            await loadAlerts();
+            setShowDeleteBudgetConfirm(false);
+            setBudgetToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteBudgetConfirm(false);
+          setBudgetToDelete(null);
+        }}
+      />
+
+      {/* Delete Rule Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteRuleConfirm}
+        title="Delete Rule"
+        message="Are you sure you want to delete this allocation rule?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          if (ruleToDelete) {
+            await electronAPI.deleteAllocationRule(ruleToDelete);
+            await loadRules();
+            setShowDeleteRuleConfirm(false);
+            setRuleToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteRuleConfirm(false);
+          setRuleToDelete(null);
+        }}
+      />
+    </div>
+  );
+})}
               </div>
             )}
           </div>

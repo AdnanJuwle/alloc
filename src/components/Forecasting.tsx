@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Lightbulb, Settings, Trash2, CheckCircle, X } from 'lucide-react';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ChatMessage {
   id?: string;
@@ -25,6 +26,7 @@ export function Forecasting() {
   const [llmEnabled, setLlmEnabled] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [pendingActions, setPendingActions] = useState<Array<{ type: string; data: any; description?: string }>>([]);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -300,18 +302,7 @@ export function Forecasting() {
             {messages.length > 1 && (
               <button
                 className="btn btn-secondary"
-                onClick={async () => {
-                  if (confirm('Are you sure you want to clear all chat messages?')) {
-                    await electronAPI.clearChatMessages();
-                    const welcomeMessage: ChatMessage = {
-                      role: 'assistant',
-                      content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
-                      timestamp: new Date().toISOString(),
-                    };
-                    await electronAPI.saveChatMessage(welcomeMessage);
-                    setMessages([welcomeMessage]);
-                  }
-                }}
+                onClick={() => setShowClearConfirm(true)}
                 style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}
               >
                 <Trash2 size={14} style={{ marginRight: '0.25rem' }} />
@@ -576,6 +567,28 @@ export function Forecasting() {
           </button>
         </div>
       </div>
+
+      {/* Clear Chat Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        title="Clear Chat History"
+        message="Are you sure you want to clear all chat messages? This action cannot be undone."
+        confirmText="Clear"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          await electronAPI.clearChatMessages();
+          const welcomeMessage: ChatMessage = {
+            role: 'assistant',
+            content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
+            timestamp: new Date().toISOString(),
+          };
+          await electronAPI.saveChatMessage(welcomeMessage);
+          setMessages([welcomeMessage]);
+          setShowClearConfirm(false);
+        }}
+        onCancel={() => setShowClearConfirm(false)}
+      />
     </div>
   );
 }

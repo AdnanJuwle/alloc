@@ -7,6 +7,8 @@ export function IncomeSimulator() {
   const [scenarios, setScenarios] = useState<IncomeScenario[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingScenario, setEditingScenario] = useState<IncomeScenario | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [scenarioToDelete, setScenarioToDelete] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<IncomeScenario>>({
     name: '',
     monthlyIncome: 0,
@@ -68,11 +70,9 @@ export function IncomeSimulator() {
     setShowModal(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this scenario?')) {
-      await electronAPI.deleteIncomeScenario(id);
-      await loadScenarios();
-    }
+  const handleDelete = (id: number) => {
+    setScenarioToDelete(id);
+    setShowDeleteConfirm(true);
   };
 
   const handleCloseModal = () => {
@@ -293,6 +293,28 @@ export function IncomeSimulator() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Income Scenario"
+        message="Are you sure you want to delete this income scenario?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          if (scenarioToDelete) {
+            await electronAPI.deleteIncomeScenario(scenarioToDelete);
+            await loadScenarios();
+            setShowDeleteConfirm(false);
+            setScenarioToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteConfirm(false);
+          setScenarioToDelete(null);
+        }}
+      />
     </div>
   );
 }

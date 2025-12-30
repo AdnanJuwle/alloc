@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Target, TrendingUp, Calendar, AlertCircle, Shield, TrendingDown, DollarSign, PieChart, Bell, Plus, Edit2, Trash2, Tag, Filter, Activity, CheckCircle, XCircle } from 'lucide-react';
 import { Goal, SpendingPeriod, SpendingAlert, Category, PlanHealth } from '../types';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 export function Dashboard() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -22,6 +23,8 @@ export function Dashboard() {
     icon: '',
     color: '#007aff',
   });
+  const [showDeleteCategoryConfirm, setShowDeleteCategoryConfirm] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<number | null>(null);
 
   useEffect(() => {
     loadGoals();
@@ -100,11 +103,9 @@ export function Dashboard() {
     setShowCategoryModal(true);
   };
 
-  const handleCategoryDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this category? This will not delete transactions, but they will lose their category association.')) {
-      await electronAPI.deleteCategory(id);
-      await loadCategories();
-    }
+  const handleCategoryDelete = (id: number) => {
+    setCategoryToDelete(id);
+    setShowDeleteCategoryConfirm(true);
   };
 
   const handleCloseCategoryModal = () => {
@@ -1087,6 +1088,28 @@ export function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Delete Category Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteCategoryConfirm}
+        title="Delete Category"
+        message="Are you sure you want to delete this category? This will not delete transactions, but they will lose their category association."
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          if (categoryToDelete) {
+            await electronAPI.deleteCategory(categoryToDelete);
+            await loadCategories();
+            setShowDeleteCategoryConfirm(false);
+            setCategoryToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteCategoryConfirm(false);
+          setCategoryToDelete(null);
+        }}
+      />
     </div>
   );
 }

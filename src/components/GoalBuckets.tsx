@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Target, Calendar, TrendingUp, Shield } from 'lucide-react';
 import { Goal } from '../types';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 export function GoalBuckets() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<number | null>(null);
   const [formData, setFormData] = useState<Partial<Goal>>({
     name: '',
     targetAmount: 0,
@@ -81,10 +84,20 @@ export function GoalBuckets() {
     setShowModal(true);
   };
 
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<number | null>(null);
+
   const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this goal?')) {
-      await electronAPI.deleteGoal(id);
+    setGoalToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (goalToDelete) {
+      await electronAPI.deleteGoal(goalToDelete);
       await loadGoals();
+      setShowDeleteConfirm(false);
+      setGoalToDelete(null);
     }
   };
 

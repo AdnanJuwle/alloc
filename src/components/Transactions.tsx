@@ -218,11 +218,12 @@ export function Transactions() {
     setShowFlexEventModal(true);
   };
 
-  const handleFlexEventDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this flex event?')) {
-      await electronAPI.deleteFlexEvent(id);
-      await loadFlexEvents();
-    }
+  const [showDeleteFlexEventConfirm, setShowDeleteFlexEventConfirm] = useState(false);
+  const [flexEventToDelete, setFlexEventToDelete] = useState<number | null>(null);
+
+  const handleFlexEventDelete = (id: number) => {
+    setFlexEventToDelete(id);
+    setShowDeleteFlexEventConfirm(true);
   };
 
   const handleCloseFlexEventModal = () => {
