@@ -84,21 +84,9 @@ export function GoalBuckets() {
     setShowModal(true);
   };
 
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [goalToDelete, setGoalToDelete] = useState<number | null>(null);
-
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     setGoalToDelete(id);
     setShowDeleteConfirm(true);
-  };
-
-  const confirmDelete = async () => {
-    if (goalToDelete) {
-      await electronAPI.deleteGoal(goalToDelete);
-      await loadGoals();
-      setShowDeleteConfirm(false);
-      setGoalToDelete(null);
-    }
   };
 
   const handleCloseModal = () => {
