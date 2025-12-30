@@ -133,9 +133,19 @@ export function Forecasting() {
       
       // If there are actions, show them for confirmation instead of executing
       if (response.actions && response.actions.length > 0) {
-        console.log('Received actions from LLM:', response.actions);
+        console.log('Received actions from LLM:', JSON.stringify(response.actions, null, 2));
         setPendingActions(response.actions);
         assistantContent += '\n\n⚠️ I need your confirmation to perform the following actions:';
+        
+        // Auto-execute if user typed "confirm" or "yes" in their message
+        const userMessageLower = userMessage.toLowerCase().trim();
+        if (userMessageLower === 'confirm' || userMessageLower === 'yes' || userMessageLower.startsWith('confirm') || userMessageLower.startsWith('yes')) {
+          console.log('Auto-confirming actions because user typed confirm/yes');
+          // Auto-confirm all actions after a short delay
+          setTimeout(() => {
+            handleConfirmAllActions();
+          }, 500);
+        }
       }
       
       const assistantMsg: ChatMessage = {
@@ -204,12 +214,16 @@ export function Forecasting() {
         successMsg.id = successMsgId;
         setMessages(prev => [...prev, successMsg]);
         
-        // Remove from pending
-        setPendingActions(prev => prev.filter((_, i) => i !== index));
+        // Remove from pending (but don't clear if we're in the middle of confirming all)
+        setPendingActions(prev => {
+          const filtered = prev.filter((_, i) => i !== index);
+          console.log('Pending actions after removal:', filtered.length);
+          return filtered;
+        });
         
         // Refresh data - dispatch event with a delay to ensure DB is updated
         setTimeout(() => {
-          console.log('Dispatching data-updated event');
+          console.log('Dispatching data-updated event after transaction creation');
           window.dispatchEvent(new CustomEvent('data-updated'));
         }, 500);
       } else {

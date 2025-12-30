@@ -1511,37 +1511,57 @@ ipcMain.handle('execute-llm-action', async (_, action: any) => {
   
   try {
     if (action.type === 'create_transaction') {
-      console.log('IPC: Creating transaction with data:', action.data);
+      console.log('IPC: Creating transaction with action:', JSON.stringify(action, null, 2));
+      console.log('IPC: Transaction data:', JSON.stringify(action.data, null, 2));
       const transactionData = action.data;
+      
+      // Validate required fields
+      if (!transactionData.amount) {
+        console.error('IPC: Missing amount in transaction data');
+        return { success: false, error: 'Missing amount' };
+      }
+      if (!transactionData.transactionType) {
+        console.error('IPC: Missing transactionType in transaction data');
+        return { success: false, error: 'Missing transaction type' };
+      }
       
       // Handle date - convert to ISO string if it's just a date string
       let transactionDate = transactionData.date || new Date().toISOString();
       if (transactionDate && !transactionDate.includes('T')) {
         // If it's just a date (YYYY-MM-DD), convert to ISO string
         transactionDate = new Date(transactionDate + 'T00:00:00').toISOString();
+        console.log('IPC: Converted date to ISO:', transactionDate);
       }
       
-      const transactionId = insertTransaction({
+      const transactionToInsert = {
         goal_id: transactionData.goalId || null,
         category_id: transactionData.categoryId || null,
-        amount: transactionData.amount,
+        amount: Number(transactionData.amount),
         transaction_type: transactionData.transactionType,
         description: transactionData.description || null,
         date: transactionDate,
         deviation_type: null,
         planned_amount: null,
-        actual_amount: transactionData.amount,
+        actual_amount: Number(transactionData.amount),
         acknowledged: false,
         acknowledged_at: null,
-      });
+      };
       
-      console.log('IPC: Transaction created successfully:', { id: transactionId, data: transactionData });
+      console.log('IPC: Inserting transaction:', JSON.stringify(transactionToInsert, null, 2));
+      
+      const transactionId = insertTransaction(transactionToInsert);
+      
+      console.log('IPC: Transaction created successfully with ID:', transactionId);
       
       // Verify transaction was saved
       const allTransactions = queryTransactions();
-      console.log('IPC: Total transactions in DB:', allTransactions.length);
+      console.log('IPC: Total transactions in DB after insert:', allTransactions.length);
       const newTransaction = allTransactions.find(t => t.id === transactionId);
-      console.log('IPC: New transaction found in DB:', newTransaction);
+      if (newTransaction) {
+        console.log('IPC: ✓ New transaction verified in DB:', JSON.stringify(newTransaction, null, 2));
+      } else {
+        console.error('IPC: ✗ New transaction NOT found in DB!');
+      }
       
       return {
         success: true,
