@@ -657,6 +657,28 @@ export function Transactions() {
           </div>
         </div>
       )}
+
+      {/* Delete Flex Event Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteFlexEventConfirm}
+        title="Delete Flex Event"
+        message="Are you sure you want to delete this flex event?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          if (flexEventToDelete) {
+            await electronAPI.deleteFlexEvent(flexEventToDelete);
+            await loadFlexEvents();
+            setShowDeleteFlexEventConfirm(false);
+            setFlexEventToDelete(null);
+          }
+        }}
+        onCancel={() => {
+          setShowDeleteFlexEventConfirm(false);
+          setFlexEventToDelete(null);
+        }}
+      />
     </div>
   );
 }
