@@ -29,6 +29,10 @@ import {
   insertFlexEvent,
   updateFlexEvent,
   deleteFlexEvent,
+  queryChatMessages,
+  insertChatMessage,
+  deleteChatMessage,
+  clearChatMessages,
 } from './database';
 import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis, getLLMChatResponse, ChatMessage, checkOllamaAvailable } from './llm-service';
 
@@ -1316,6 +1320,27 @@ ipcMain.handle('check-ollama', async () => {
   const settings = getSettings();
   const url = settings.ollamaUrl || 'http://localhost:11434';
   return await checkOllamaAvailable(url);
+});
+
+// Chat Messages Management
+ipcMain.handle('get-chat-messages', async () => {
+  return queryChatMessages();
+});
+
+ipcMain.handle('save-chat-message', async (_, message) => {
+  return insertChatMessage({
+    role: message.role,
+    content: message.content,
+    timestamp: message.timestamp || new Date().toISOString(),
+  });
+});
+
+ipcMain.handle('delete-chat-message', async (_, id) => {
+  deleteChatMessage(id);
+});
+
+ipcMain.handle('clear-chat-messages', async () => {
+  clearChatMessages();
 });
 
 // V3: LLM Chat-based Forecasting

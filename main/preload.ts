@@ -88,5 +88,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // LLM Provider
   checkOllama: () => ipcRenderer.invoke('check-ollama'),
+  
+  // Chat Messages
+  getChatMessages: () => ipcRenderer.invoke('get-chat-messages'),
+  saveChatMessage: (message: any) => ipcRenderer.invoke('save-chat-message', message),
+  deleteChatMessage: (id: string) => ipcRenderer.invoke('delete-chat-message', id),
+  clearChatMessages: () => ipcRenderer.invoke('clear-chat-messages'),
 });
 

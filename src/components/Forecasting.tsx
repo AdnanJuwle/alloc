@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Lightbulb, Settings } from 'lucide-react';
+import { Send, Brain, Sparkles, TrendingUp, AlertCircle, Lightbulb, Settings, Trash2 } from 'lucide-react';
 import { electronAPI } from '../utils/electron-api';
 
 interface ChatMessage {
+  id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
@@ -18,19 +19,15 @@ const QUICK_ACTIONS = [
 ];
 
 export function Forecasting() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [llmEnabled, setLlmEnabled] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    loadChatMessages();
     checkLLMStatus();
   }, []);
 
@@ -40,6 +37,39 @@ export function Forecasting() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const loadChatMessages = async () => {
+    try {
+      const savedMessages = await electronAPI.getChatMessages();
+      if (savedMessages && savedMessages.length > 0) {
+        setMessages(savedMessages.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })));
+      } else {
+        // Initialize with welcome message if no saved messages
+        const welcomeMessage: ChatMessage = {
+          role: 'assistant',
+          content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages([welcomeMessage]);
+        await electronAPI.saveChatMessage(welcomeMessage);
+      }
+    } catch (error) {
+      console.error('Error loading chat messages:', error);
+      // Fallback to welcome message
+      setMessages([{
+        role: 'assistant',
+        content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
+        timestamp: new Date().toISOString(),
+      }]);
+    } finally {
+      setLoadingMessages(false);
+    }
   };
 
   const checkLLMStatus = async () => {
@@ -80,14 +110,17 @@ export function Forecasting() {
     }
 
     // Add user message
-    const newMessages: ChatMessage[] = [
-      ...messages,
-      {
-        role: 'user',
-        content: userMessage,
-        timestamp: new Date().toISOString(),
-      },
-    ];
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Save user message
+    const userMsgId = await electronAPI.saveChatMessage(userMsg);
+    userMsg.id = userMsgId;
+    
+    const newMessages: ChatMessage[] = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
     setLoading(true);
@@ -95,26 +128,27 @@ export function Forecasting() {
     try {
       const response = await electronAPI.llmChat(newMessages);
       
-      if (response.error) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `Error: ${response.error}`,
-          timestamp: new Date().toISOString(),
-        }]);
-      } else {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: response.content,
-          timestamp: new Date().toISOString(),
-        }]);
-      }
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        content: response.error ? `Error: ${response.error}` : response.content,
+        timestamp: new Date().toISOString(),
+      };
+      
+      // Save assistant message
+      const assistantMsgId = await electronAPI.saveChatMessage(assistantMsg);
+      assistantMsg.id = assistantMsgId;
+      
+      setMessages(prev => [...prev, assistantMsg]);
     } catch (error) {
       console.error('Error getting LLM response:', error);
-      setMessages(prev => [...prev, {
+      const errorMsg: ChatMessage = {
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please check your API key in Settings and try again.',
         timestamp: new Date().toISOString(),
-      }]);
+      };
+      const errorMsgId = await electronAPI.saveChatMessage(errorMsg);
+      errorMsg.id = errorMsgId;
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
@@ -144,12 +178,35 @@ export function Forecasting() {
               </span>
             )}
           </div>
-          {!llmEnabled && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#ff9500' }}>
-              <AlertCircle size={16} />
-              <span>Configure API key in Settings</span>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {messages.length > 1 && (
+              <button
+                className="btn btn-secondary"
+                onClick={async () => {
+                  if (confirm('Are you sure you want to clear all chat messages?')) {
+                    await electronAPI.clearChatMessages();
+                    const welcomeMessage: ChatMessage = {
+                      role: 'assistant',
+                      content: 'Hi! I\'m your AI financial advisor. I can help you with forecasting, scenario analysis, spending patterns, and more. What would you like to know?',
+                      timestamp: new Date().toISOString(),
+                    };
+                    await electronAPI.saveChatMessage(welcomeMessage);
+                    setMessages([welcomeMessage]);
+                  }
+                }}
+                style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem' }}
+              >
+                <Trash2 size={14} style={{ marginRight: '0.25rem' }} />
+                Clear Chat
+              </button>
+            )}
+            {!llmEnabled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#ff9500' }}>
+                <AlertCircle size={16} />
+                <span>Configure in Settings</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -186,15 +243,29 @@ export function Forecasting() {
 
       {/* Chat Messages */}
       <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
-          padding: '1.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}>
-          {messages.map((message, idx) => (
+        {loadingMessages ? (
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: '2rem'
+          }}>
+            <div style={{ textAlign: 'center', color: '#8e8e93' }}>
+              <Brain size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+              <div>Loading chat history...</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: '1.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+          }}>
+            {messages.map((message, idx) => (
             <div
               key={idx}
               style={{
@@ -257,7 +328,8 @@ export function Forecasting() {
           )}
           
           <div ref={messagesEndRef} />
-        </div>
+          </div>
+        )}
 
         {/* Input Area */}
         <div style={{ 

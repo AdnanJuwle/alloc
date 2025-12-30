@@ -112,10 +112,20 @@ interface Database {
   budgets?: Budget[];
   allocation_rules?: AllocationRule[];
   flex_events?: FlexEvent[];
+  chat_messages?: ChatMessage[];
   nextCategoryId?: number;
   nextBudgetId?: number;
   nextRuleId?: number;
   nextFlexEventId?: number;
+}
+
+// V3: Chat messages for LLM forecasting
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  created_at: string;
 }
 
 let db: Database | null = null;
@@ -155,6 +165,7 @@ export function initializeDatabase() {
   if (!database.budgets) database.budgets = [];
   if (!database.allocation_rules) database.allocation_rules = [];
   if (!database.flex_events) database.flex_events = [];
+  if (!database.chat_messages) database.chat_messages = [];
   if (!database.nextCategoryId) database.nextCategoryId = 1;
   if (!database.nextBudgetId) database.nextBudgetId = 1;
   if (!database.nextRuleId) database.nextRuleId = 1;
@@ -178,6 +189,7 @@ function createEmptyDatabase(): Database {
     budgets: [],
     allocation_rules: [],
     flex_events: [],
+    chat_messages: [],
     nextCategoryId: 1,
     nextBudgetId: 1,
     nextRuleId: 1,
@@ -480,4 +492,41 @@ export function deleteFlexEvent(id: number): void {
     database.flex_events = database.flex_events.filter(f => f.id !== id);
     saveDatabase();
   }
+}
+
+// V3: Chat messages functions
+export function queryChatMessages(): ChatMessage[] {
+  const database = getDatabase();
+  return [...(database.chat_messages || [])].sort((a, b) => 
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
+export function insertChatMessage(message: Omit<ChatMessage, 'id' | 'created_at'>): string {
+  const database = getDatabase();
+  if (!database.chat_messages) database.chat_messages = [];
+  
+  const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const newMessage: ChatMessage = {
+    ...message,
+    id,
+    created_at: new Date().toISOString(),
+  };
+  database.chat_messages.push(newMessage);
+  saveDatabase();
+  return id;
+}
+
+export function deleteChatMessage(id: string): void {
+  const database = getDatabase();
+  if (database.chat_messages) {
+    database.chat_messages = database.chat_messages.filter(m => m.id !== id);
+    saveDatabase();
+  }
+}
+
+export function clearChatMessages(): void {
+  const database = getDatabase();
+  database.chat_messages = [];
+  saveDatabase();
 }

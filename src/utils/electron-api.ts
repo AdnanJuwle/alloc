@@ -81,6 +81,12 @@ export interface ElectronAPI {
   
   // LLM Provider
   checkOllama: () => Promise<boolean>;
+  
+  // Chat Messages
+  getChatMessages: () => Promise<any[]>;
+  saveChatMessage: (message: any) => Promise<string>;
+  deleteChatMessage: (id: string) => Promise<void>;
+  clearChatMessages: () => Promise<void>;
 }
 
 declare global {
