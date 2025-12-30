@@ -172,3 +172,81 @@ export interface PlanHealth {
   healthStatus: 'healthy' | 'warning' | 'critical';
 }
 
+// V3: Forecasting and Intelligence
+export interface Forecast {
+  currentBalance: number;
+  projectedBalance: number; // End of month/period
+  projectedDate: string;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  monthlySavings: number;
+  confidence: number; // 0-100%
+  assumptions: string[];
+}
+
+export interface GoalForecast {
+  goalId: number;
+  goalName: string;
+  currentAmount: number;
+  targetAmount: number;
+  projectedCompletionDate: string;
+  monthsRemaining: number;
+  requiredMonthly: number;
+  currentMonthly: number;
+  onTrack: boolean;
+  confidence: number; // 0-100%
+}
+
+export interface Scenario {
+  id?: string;
+  name: string;
+  type: 'purchase' | 'income_change' | 'expense_change' | 'goal_adjustment';
+  description: string;
+  amount?: number; // For purchases or changes
+  categoryId?: number; // For expense changes
+  goalId?: number; // For goal adjustments
+  monthsAhead: number; // When this scenario happens
+  impact: ScenarioImpact;
+}
+
+export interface ScenarioImpact {
+  projectedBalance: number;
+  affectedGoals: Array<{
+    goalId: number;
+    goalName: string;
+    completionDateShift: number; // months
+    newRequiredMonthly: number;
+  }>;
+  monthlySavingsChange: number;
+  freeSpendChange: number;
+}
+
+export interface SpendingPattern {
+  categoryId: number;
+  categoryName: string;
+  averageMonthly: number;
+  trend: 'increasing' | 'decreasing' | 'stable';
+  trendPercentage: number; // % change over time
+  recurringLeaks: Array<{
+    description: string;
+    averageAmount: number;
+    frequency: string; // e.g., "weekly", "monthly"
+  }>;
+  wastefulHabits: string[]; // Identified wasteful patterns
+}
+
+export interface SmartSuggestion {
+  id?: string;
+  type: 'reduce_category' | 'delay_purchase' | 'increase_savings' | 'adjust_goal';
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  impact: {
+    savingsPotential?: number;
+    goalAcceleration?: number; // months
+    categoryId?: number;
+    goalId?: number;
+  };
+  actionable: boolean;
+}
+

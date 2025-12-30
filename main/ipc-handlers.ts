@@ -782,3 +782,417 @@ ipcMain.handle('calculate-plan-health', async () => {
     healthStatus,
   };
 });
+
+// V3: Forecasting
+ipcMain.handle('forecast-balance', async (_, monthsAhead: number = 6) => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const incomeScenarios = queryIncomeScenarios();
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  
+  if (!expectedScenario) {
+    return null;
+  }
+  
+  const now = new Date();
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  
+  // Calculate current balance (sum of all goal current amounts)
+  const currentBalance = goals.reduce((sum, g) => sum + (g.current_amount || 0), 0);
+  
+  // Calculate average monthly income
+  const netIncome = expectedScenario.monthly_income * (1 - expectedScenario.tax_rate / 100) - expectedScenario.fixed_expenses;
+  
+  // Calculate average monthly expenses from last 3 months
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const recentExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense') return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  const totalExpenses = recentExpenses.reduce((sum, t) => sum + t.amount, 0);
+  const averageMonthlyExpenses = totalExpenses / 3;
+  
+  // Calculate average monthly savings (allocations to goals)
+  const recentAllocations = transactions.filter(t => {
+    if (t.transaction_type !== 'allocation') return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  const totalAllocations = recentAllocations.reduce((sum, t) => sum + t.amount, 0);
+  const averageMonthlySavings = totalAllocations / 3;
+  
+  // Project forward
+  const projectedBalance = currentBalance + (netIncome - averageMonthlyExpenses) * monthsAhead;
+  const projectedDate = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 0);
+  
+  // Calculate confidence based on data availability
+  const confidence = recentExpenses.length > 5 && recentAllocations.length > 2 ? 85 : 60;
+  
+  const assumptions = [
+    `Income remains at ₹${netIncome.toLocaleString()}/month`,
+    `Expenses average ₹${averageMonthlyExpenses.toLocaleString()}/month`,
+    `No major unexpected expenses`,
+  ];
+  
+  return {
+    currentBalance,
+    projectedBalance,
+    projectedDate: projectedDate.toISOString(),
+    monthlyIncome: netIncome,
+    monthlyExpenses: averageMonthlyExpenses,
+    monthlySavings: averageMonthlySavings,
+    confidence,
+    assumptions,
+  };
+});
+
+ipcMain.handle('forecast-goals', async () => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const now = new Date();
+  
+  const forecasts: any[] = [];
+  
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const currentAmount = goal.current_amount || 0;
+    const remaining = goal.target_amount - currentAmount;
+    
+    if (remaining <= 0) {
+      // Goal already completed
+      forecasts.push({
+        goalId: goal.id,
+        goalName: goal.name,
+        currentAmount,
+        targetAmount: goal.target_amount,
+        projectedCompletionDate: goal.deadline,
+        monthsRemaining: 0,
+        requiredMonthly: 0,
+        currentMonthly: 0,
+        onTrack: true,
+        confidence: 100,
+      });
+      continue;
+    }
+    
+    // Calculate average monthly contribution from last 3 months
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    const goalTransactions = transactions.filter(t => {
+      if (!t.goal_id || t.goal_id !== goal.id) return false;
+      if (t.transaction_type !== 'allocation') return false;
+      const txDate = new Date(t.date);
+      return txDate >= threeMonthsAgo;
+    });
+    const totalContributions = goalTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const currentMonthly = goalTransactions.length > 0 ? totalContributions / 3 : (goal.monthly_contribution || 0);
+    
+    // Calculate required monthly
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+    
+    // Project completion date based on current rate
+    let projectedCompletionDate: string;
+    let projectedMonthsRemaining: number;
+    
+    if (currentMonthly > 0) {
+      projectedMonthsRemaining = Math.ceil(remaining / currentMonthly);
+      const projectedDate = new Date(now);
+      projectedDate.setMonth(projectedDate.getMonth() + projectedMonthsRemaining);
+      projectedCompletionDate = projectedDate.toISOString();
+    } else {
+      projectedCompletionDate = goal.deadline;
+      projectedMonthsRemaining = monthsRemaining;
+    }
+    
+    const onTrack = currentMonthly >= requiredMonthly * 0.9; // 90% threshold
+    const confidence = goalTransactions.length > 2 ? 80 : 50;
+    
+    forecasts.push({
+      goalId: goal.id,
+      goalName: goal.name,
+      currentAmount,
+      targetAmount: goal.target_amount,
+      projectedCompletionDate,
+      monthsRemaining: projectedMonthsRemaining,
+      requiredMonthly,
+      currentMonthly,
+      onTrack,
+      confidence,
+    });
+  }
+  
+  return forecasts;
+});
+
+// V3: Scenario Simulation
+ipcMain.handle('simulate-scenario', async (_, scenario: any) => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const incomeScenarios = queryIncomeScenarios();
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  
+  if (!expectedScenario) {
+    return null;
+  }
+  
+  const now = new Date();
+  const netIncome = expectedScenario.monthly_income * (1 - expectedScenario.tax_rate / 100) - expectedScenario.fixed_expenses;
+  
+  // Calculate current monthly expenses
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const recentExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense') return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  const totalExpenses = recentExpenses.reduce((sum, t) => sum + t.amount, 0);
+  const averageMonthlyExpenses = totalExpenses / 3;
+  
+  let newMonthlyExpenses = averageMonthlyExpenses;
+  let newMonthlySavings = 0;
+  let affectedGoals: any[] = [];
+  
+  // Apply scenario
+  if (scenario.type === 'purchase') {
+    // One-time purchase reduces available savings
+    const purchaseAmount = scenario.amount || 0;
+    // This would reduce savings for that month, affecting goals
+    newMonthlySavings = (netIncome - averageMonthlyExpenses) - (purchaseAmount / scenario.monthsAhead);
+  } else if (scenario.type === 'income_change') {
+    const changePercent = (scenario.amount || 0) / 100;
+    const newNetIncome = netIncome * (1 + changePercent);
+    newMonthlySavings = newNetIncome - averageMonthlyExpenses;
+  } else if (scenario.type === 'expense_change') {
+    const changeAmount = scenario.amount || 0;
+    newMonthlyExpenses = averageMonthlyExpenses + changeAmount;
+    newMonthlySavings = netIncome - newMonthlyExpenses;
+  }
+  
+  // Calculate impact on goals
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    
+    if (remaining > 0) {
+      const originalRequiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+      const currentMonthly = goal.monthly_contribution || 0;
+      
+      // If savings reduced, goals may be delayed
+      if (newMonthlySavings < (netIncome - averageMonthlyExpenses)) {
+        const reduction = (netIncome - averageMonthlyExpenses) - newMonthlySavings;
+        const newRequiredMonthly = Math.max(0, currentMonthly - reduction);
+        
+        if (newRequiredMonthly < originalRequiredMonthly) {
+          const newMonthsNeeded = Math.ceil(remaining / Math.max(newRequiredMonthly, 0.01));
+          const completionDateShift = Math.max(0, newMonthsNeeded - monthsRemaining);
+          
+          affectedGoals.push({
+            goalId: goal.id,
+            goalName: goal.name,
+            completionDateShift,
+            newRequiredMonthly: Math.max(originalRequiredMonthly, newRequiredMonthly),
+          });
+        }
+      }
+    }
+  }
+  
+  const projectedBalance = (goals.reduce((sum, g) => sum + (g.current_amount || 0), 0)) + 
+    (newMonthlySavings * scenario.monthsAhead);
+  
+  return {
+    projectedBalance,
+    affectedGoals,
+    monthlySavingsChange: newMonthlySavings - (netIncome - averageMonthlyExpenses),
+    freeSpendChange: newMonthlySavings - (netIncome - averageMonthlyExpenses),
+  };
+});
+
+// V3: Spending Pattern Analysis
+ipcMain.handle('analyze-spending-patterns', async () => {
+  const transactions = queryTransactions();
+  const categories = queryCategories();
+  const now = new Date();
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+  
+  // Filter expenses from last 6 months
+  const expenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense' || !t.category_id) return false;
+    const txDate = new Date(t.date);
+    return txDate >= sixMonthsAgo;
+  });
+  
+  // Group by category and month
+  const categoryMap = new Map<number, { amounts: number[], descriptions: string[] }>();
+  
+  for (const expense of expenses) {
+    if (!expense.category_id) continue;
+    
+    if (!categoryMap.has(expense.category_id)) {
+      categoryMap.set(expense.category_id, { amounts: [], descriptions: [] });
+    }
+    
+    const data = categoryMap.get(expense.category_id)!;
+    data.amounts.push(expense.amount);
+    if (expense.description) {
+      data.descriptions.push(expense.description);
+    }
+  }
+  
+  const patterns: any[] = [];
+  
+  for (const [categoryId, data] of categoryMap.entries()) {
+    if (data.amounts.length < 3) continue; // Need at least 3 transactions
+    
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) continue;
+    
+    // Calculate average monthly
+    const total = data.amounts.reduce((sum, a) => sum + a, 0);
+    const averageMonthly = total / 6;
+    
+    // Calculate trend (simple: compare first half vs second half)
+    const firstHalf = data.amounts.slice(0, Math.floor(data.amounts.length / 2));
+    const secondHalf = data.amounts.slice(Math.floor(data.amounts.length / 2));
+    const firstHalfAvg = firstHalf.reduce((sum, a) => sum + a, 0) / firstHalf.length;
+    const secondHalfAvg = secondHalf.reduce((sum, a) => sum + a, 0) / secondHalf.length;
+    
+    let trend: 'increasing' | 'decreasing' | 'stable' = 'stable';
+    let trendPercentage = 0;
+    
+    if (secondHalfAvg > firstHalfAvg * 1.1) {
+      trend = 'increasing';
+      trendPercentage = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100;
+    } else if (secondHalfAvg < firstHalfAvg * 0.9) {
+      trend = 'decreasing';
+      trendPercentage = ((firstHalfAvg - secondHalfAvg) / firstHalfAvg) * 100;
+    }
+    
+    // Identify recurring leaks (similar amounts/descriptions)
+    const recurringLeaks: any[] = [];
+    const descriptionCounts = new Map<string, number>();
+    for (const desc of data.descriptions) {
+      descriptionCounts.set(desc, (descriptionCounts.get(desc) || 0) + 1);
+    }
+    
+    for (const [desc, count] of descriptionCounts.entries()) {
+      if (count >= 3) {
+        const matchingAmounts = expenses
+          .filter(e => e.category_id === categoryId && e.description === desc)
+          .map(e => e.amount);
+        const avgAmount = matchingAmounts.reduce((sum, a) => sum + a, 0) / matchingAmounts.length;
+        recurringLeaks.push({
+          description: desc,
+          averageAmount: avgAmount,
+          frequency: count >= 4 ? 'weekly' : 'monthly',
+        });
+      }
+    }
+    
+    // Identify wasteful habits (high spending with increasing trend)
+    const wastefulHabits: string[] = [];
+    if (trend === 'increasing' && averageMonthly > 5000) {
+      wastefulHabits.push(`Increasing spending trend (+${trendPercentage.toFixed(1)}%)`);
+    }
+    if (recurringLeaks.length > 2) {
+      wastefulHabits.push('Multiple recurring small expenses');
+    }
+    
+    patterns.push({
+      categoryId,
+      categoryName: category.name,
+      averageMonthly,
+      trend,
+      trendPercentage: Math.round(trendPercentage * 100) / 100,
+      recurringLeaks,
+      wastefulHabits,
+    });
+  }
+  
+  return patterns;
+});
+
+// V3: Smart Suggestions
+ipcMain.handle('get-smart-suggestions', async () => {
+  const goals = queryGoals();
+  const transactions = queryTransactions();
+  const budgets = queryBudgets();
+  const categories = queryCategories();
+  const incomeScenarios = queryIncomeScenarios();
+  const expectedScenario = incomeScenarios.find(s => s.scenario_type === 'expected');
+  
+  if (!expectedScenario) {
+    return [];
+  }
+  
+  const now = new Date();
+  const suggestions: any[] = [];
+  
+  // Analyze spending patterns
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const recentExpenses = transactions.filter(t => {
+    if (t.transaction_type !== 'expense' || !t.category_id) return false;
+    const txDate = new Date(t.date);
+    return txDate >= threeMonthsAgo;
+  });
+  
+  // Check for categories exceeding budgets
+  for (const budget of budgets) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    
+    const monthExpenses = recentExpenses.filter(t => {
+      const txDate = new Date(t.date);
+      return txDate >= monthStart && txDate <= monthEnd && t.category_id === budget.category_id;
+    });
+    
+    const monthSpending = monthExpenses.reduce((sum, t) => sum + t.amount, 0);
+    const category = categories.find(c => c.id === budget.category_id);
+    
+    if (monthSpending > budget.monthly_limit * 0.8 && category) {
+      const potentialSavings = (monthSpending - budget.monthly_limit * 0.8);
+      suggestions.push({
+        type: 'reduce_category',
+        priority: monthSpending > budget.monthly_limit ? 'high' : 'medium',
+        title: `Reduce ${category.name} spending`,
+        description: `You're spending ₹${monthSpending.toLocaleString()} this month. Reducing to 80% of budget could save ₹${potentialSavings.toLocaleString()}/month.`,
+        impact: {
+          savingsPotential: potentialSavings,
+          categoryId: budget.category_id,
+        },
+        actionable: true,
+      });
+    }
+  }
+  
+  // Check for goals that could be accelerated
+  for (const goal of goals) {
+    const deadline = new Date(goal.deadline);
+    const monthsRemaining = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    const remaining = goal.target_amount - (goal.current_amount || 0);
+    
+    if (remaining > 0 && monthsRemaining > 3) {
+      const requiredMonthly = monthsRemaining > 0 ? remaining / monthsRemaining : remaining;
+      const currentMonthly = goal.monthly_contribution || 0;
+      
+      if (currentMonthly < requiredMonthly * 0.9) {
+        const increaseNeeded = requiredMonthly - currentMonthly;
+        suggestions.push({
+          type: 'increase_savings',
+          priority: 'high',
+          title: `Increase savings for ${goal.name}`,
+          description: `You need ₹${requiredMonthly.toLocaleString()}/month but currently saving ₹${currentMonthly.toLocaleString()}/month. Increase by ₹${increaseNeeded.toLocaleString()}/month to stay on track.`,
+          impact: {
+            goalId: goal.id,
+            goalAcceleration: 0,
+          },
+          actionable: true,
+        });
+      }
+    }
+  }
+  
+  return suggestions;
+});

@@ -6,9 +6,10 @@ import { Dashboard } from './components/Dashboard';
 import { Transactions } from './components/Transactions';
 import { Deviations } from './components/Deviations';
 import { BudgetsAndRules } from './components/BudgetsAndRules';
+import { Forecasting } from './components/Forecasting';
 import './App.css';
 
-type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations' | 'budgets-rules';
+type Tab = 'dashboard' | 'goals' | 'income' | 'auto-split' | 'transactions' | 'deviations' | 'budgets-rules' | 'forecasting';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -63,6 +64,12 @@ function App() {
           >
             Budgets & Rules
           </button>
+          <button
+            className={activeTab === 'forecasting' ? 'active' : ''}
+            onClick={() => setActiveTab('forecasting')}
+          >
+            Forecasting
+          </button>
         </nav>
       </header>
       <main className="app-main">
@@ -73,6 +80,7 @@ function App() {
         {activeTab === 'transactions' && <Transactions />}
         {activeTab === 'deviations' && <Deviations />}
         {activeTab === 'budgets-rules' && <BudgetsAndRules />}
+        {activeTab === 'forecasting' && <Forecasting />}
       </main>
     </div>
   );

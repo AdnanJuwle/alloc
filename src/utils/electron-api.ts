@@ -54,6 +54,19 @@ export interface ElectronAPI {
   
   // V2: Plan health
   calculatePlanHealth: () => Promise<any>;
+  
+  // V3: Forecasting
+  forecastBalance: (monthsAhead?: number) => Promise<any>;
+  forecastGoals: () => Promise<any[]>;
+  
+  // V3: Scenario simulation
+  simulateScenario: (scenario: any) => Promise<any>;
+  
+  // V3: Spending patterns
+  analyzeSpendingPatterns: () => Promise<any[]>;
+  
+  // V3: Smart suggestions
+  getSmartSuggestions: () => Promise<any[]>;
 }
 
 declare global {

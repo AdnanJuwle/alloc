@@ -61,5 +61,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // V2: Plan health
   calculatePlanHealth: () => ipcRenderer.invoke('calculate-plan-health'),
+  
+  // V3: Forecasting
+  forecastBalance: (monthsAhead?: number) => ipcRenderer.invoke('forecast-balance', monthsAhead),
+  forecastGoals: () => ipcRenderer.invoke('forecast-goals'),
+  
+  // V3: Scenario simulation
+  simulateScenario: (scenario: any) => ipcRenderer.invoke('simulate-scenario', scenario),
+  
+  // V3: Spending patterns
+  analyzeSpendingPatterns: () => ipcRenderer.invoke('analyze-spending-patterns'),
+  
+  // V3: Smart suggestions
+  getSmartSuggestions: () => ipcRenderer.invoke('get-smart-suggestions'),
 });
 
