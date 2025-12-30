@@ -85,5 +85,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // V3: LLM Chat
   llmChat: (messages: any[]) => ipcRenderer.invoke('llm-chat', messages),
+  
+  // LLM Provider
+  checkOllama: () => ipcRenderer.invoke('check-ollama'),
 });
 

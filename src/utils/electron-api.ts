@@ -78,6 +78,9 @@ export interface ElectronAPI {
   
   // V3: LLM Chat
   llmChat: (messages: any[]) => Promise<any>;
+  
+  // LLM Provider
+  checkOllama: () => Promise<boolean>;
 }
 
 declare global {

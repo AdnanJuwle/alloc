@@ -30,7 +30,7 @@ import {
   updateFlexEvent,
   deleteFlexEvent,
 } from './database';
-import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis, getLLMChatResponse, ChatMessage } from './llm-service';
+import { getSettings, updateSettings, getLLMForecastInsights, getLLMScenarioAnalysis, getLLMChatResponse, ChatMessage, checkOllamaAvailable } from './llm-service';
 
 // Goals
 ipcMain.handle('get-goals', async () => {
@@ -1310,6 +1310,12 @@ ipcMain.handle('get-settings', async () => {
 ipcMain.handle('update-settings', async (_, updates: any) => {
   updateSettings(updates);
   return getSettings();
+});
+
+ipcMain.handle('check-ollama', async () => {
+  const settings = getSettings();
+  const url = settings.ollamaUrl || 'http://localhost:11434';
+  return await checkOllamaAvailable(url);
 });
 
 // V3: LLM Chat-based Forecasting

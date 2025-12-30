@@ -45,9 +45,19 @@ export function Forecasting() {
   const checkLLMStatus = async () => {
     try {
       const settings = await electronAPI.getSettings();
-      setLlmEnabled(settings.llmEnabled && !!settings.openaiApiKey);
+      const provider = settings.llmProvider || 'ollama';
+      
+      if (provider === 'ollama') {
+        // For Ollama, check if it's available
+        const available = await electronAPI.checkOllama();
+        setLlmEnabled(settings.llmEnabled !== false && available);
+      } else {
+        // For OpenAI, check API key
+        setLlmEnabled(settings.llmEnabled && !!settings.openaiApiKey);
+      }
     } catch (error) {
       console.error('Error checking LLM status:', error);
+      setLlmEnabled(false);
     }
   };
 

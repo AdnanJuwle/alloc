@@ -4,9 +4,12 @@ import * as fs from 'fs';
 import { app } from 'electron';
 
 interface Settings {
+  llmProvider?: 'ollama' | 'openai'; // Default: 'ollama' (free)
+  ollamaUrl?: string; // Default: 'http://localhost:11434'
+  ollamaModel?: string; // Default: 'llama3' or 'mistral'
   openaiApiKey?: string;
   llmEnabled?: boolean;
-  llmModel?: string; // 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo-preview'
+  llmModel?: string; // For OpenAI: 'gpt-3.5-turbo' | 'gpt-4' | 'gpt-4-turbo-preview'
 }
 
 function getSettingsPath(): string {
@@ -49,7 +52,7 @@ export function updateSettings(updates: Partial<Settings>): void {
 
 export function getOpenAIClient(): OpenAI | null {
   const settings = loadSettings();
-  if (!settings.openaiApiKey || !settings.llmEnabled) {
+  if (settings.llmProvider !== 'openai' || !settings.openaiApiKey || !settings.llmEnabled) {
     return null;
   }
   
@@ -60,6 +63,50 @@ export function getOpenAIClient(): OpenAI | null {
   } catch (error) {
     console.error('Error creating OpenAI client:', error);
     return null;
+  }
+}
+
+async function callOllamaAPI(
+  messages: Array<{ role: string; content: string }>,
+  model: string = 'llama3',
+  url: string = 'http://localhost:11434'
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${url}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: messages.map(msg => ({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content,
+        })),
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.statusText}`);
+    }
+
+    const data = await response.json() as { message?: { content?: string } };
+    return data.message?.content || null;
+  } catch (error) {
+    console.error('Error calling Ollama API:', error);
+    return null;
+  }
+}
+
+export async function checkOllamaAvailable(url: string = 'http://localhost:11434'): Promise<boolean> {
+  try {
+    const response = await fetch(`${url}/api/tags`, {
+      method: 'GET',
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
   }
 }
 
@@ -270,13 +317,14 @@ export async function getLLMChatResponse(
     }>;
   }
 ): Promise<string | null> {
-  const client = getOpenAIClient();
-  if (!client) {
+  const settings = loadSettings();
+  const provider = settings.llmProvider || 'ollama'; // Default to Ollama (free)
+  
+  if (!settings.llmEnabled) {
     return null;
   }
 
-  try {
-    const systemPrompt = `You are a friendly, knowledgeable financial advisor helping users with their personal finance. You have access to their financial data and can help with:
+  const systemPrompt = `You are a friendly, knowledgeable financial advisor helping users with their personal finance. You have access to their financial data and can help with:
 
 - Forecasting and predictions
 - Scenario analysis ("what if" questions)
@@ -305,26 +353,42 @@ ${financialContext.recentTransactions.slice(0, 5).map(t => `- ${t.type}: ₹${t.
 
 Provide helpful, actionable advice. Be conversational and friendly. Use emojis sparingly. When doing calculations, show your work. Always reference specific numbers from their data.`;
 
-    // Convert chat messages to OpenAI format
-    const openAIMessages = [
-      { role: 'system' as const, content: systemPrompt },
-      ...messages.map(msg => ({
-        role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
-        content: msg.content,
-      })),
-    ];
+  // Convert chat messages to API format
+  const apiMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(msg => ({
+      role: msg.role === 'assistant' ? 'assistant' : 'user',
+      content: msg.content,
+    })),
+  ];
 
-    const response = await client.chat.completions.create({
-      model: loadSettings().llmModel || 'gpt-3.5-turbo',
-      messages: openAIMessages,
-      temperature: 0.7,
-      max_tokens: 1500,
-    });
+  if (provider === 'ollama') {
+    // Use Ollama (free, local)
+    const ollamaUrl = settings.ollamaUrl || 'http://localhost:11434';
+    const ollamaModel = settings.ollamaModel || 'llama3';
+    return await callOllamaAPI(apiMessages, ollamaModel, ollamaUrl);
+  } else if (provider === 'openai') {
+    // Use OpenAI (paid)
+    const client = getOpenAIClient();
+    if (!client) {
+      return null;
+    }
 
-    return response.choices[0]?.message?.content || null;
-  } catch (error) {
-    console.error('Error calling OpenAI API for chat:', error);
-    return null;
+    try {
+      const response = await client.chat.completions.create({
+        model: settings.llmModel || 'gpt-3.5-turbo',
+        messages: apiMessages as any,
+        temperature: 0.7,
+        max_tokens: 1500,
+      });
+
+      return response.choices[0]?.message?.content || null;
+    } catch (error) {
+      console.error('Error calling OpenAI API for chat:', error);
+      return null;
+    }
   }
+
+  return null;
 }
 
