@@ -19,8 +19,10 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <h1>Expense Tracker</h1>
-          <p className="subtitle">Goal-first financial planning</p>
+          <div>
+            <h1>💰 Alloc</h1>
+            <p className="subtitle">Goal-first financial planning</p>
+          </div>
         </div>
         <nav className="nav-tabs">
           <button
