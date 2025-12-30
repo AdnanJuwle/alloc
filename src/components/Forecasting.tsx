@@ -428,11 +428,14 @@ export function Forecasting() {
               padding: '1rem',
               background: '#fff3cd',
               borderRadius: '8px',
-              border: '1px solid #ffcc00',
+              border: '2px solid #ff9500',
+              boxShadow: '0 2px 8px rgba(255, 149, 0, 0.2)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                 <AlertCircle size={20} style={{ color: '#ff9500' }} />
-                <div style={{ fontWeight: 600, flex: 1 }}>Pending Actions ({pendingActions.length})</div>
+                <div style={{ fontWeight: 600, flex: 1 }}>
+                  ⚠️ Pending Actions ({pendingActions.length}) - Click buttons below to confirm
+                </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     className="btn btn-primary"
