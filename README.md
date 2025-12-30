@@ -25,12 +25,44 @@ A desktop application for goal-first expense tracking and financial planning. Un
    - Remaining money is free-spend (guilt-free)
    - Simulates real wealth management systems
 
-### Planned Features (V2 & V3)
+### V2 - Budgeting, Goals & Allocation Engine ✅
 
-- **Future Pain Visualization**: Show consequences of missing contributions
-- **Flex Events**: Handle unexpected expenses and rebalance goals
-- **AI Financial Advisor**: Get advice on affordability and trade-offs
-- **Behavioral Tracking**: Track why you override plans
+1. **Categories & Budgets**
+   - Create expense categories (food, rent, travel, etc.)
+   - Set monthly budgets per category with hard/soft limits
+   - Spending alerts when approaching limits
+   - Time-based spending views (weekly/monthly)
+
+2. **Savings Goals**
+   - Emergency fund tracking
+   - Long-term goals (PC build, travel, investments)
+   - Income allocation (Needs, Wants, Savings)
+
+3. **Rule-Based Logic**
+   - Automated allocation rules
+   - Deviation tracking and consequence projection
+   - Flex events for unexpected expenses
+   - Plan health metrics
+
+### V3 - Intelligence, Forecasting & Decision Support ✅
+
+1. **AI-Powered Financial Advisor**
+   - Chat-based interface for financial queries
+   - Spending pattern analysis
+   - Smart suggestions and recommendations
+   - Scenario simulation ("what if" questions)
+
+2. **Forecasting & Predictions**
+   - Predict end-of-month balance
+   - Predict goal completion dates
+   - Spending pattern analysis
+   - Exportable insights
+
+3. **Advanced Features**
+   - LLM integration (Ollama/OpenAI)
+   - Action execution with user confirmation
+   - Chat history persistence
+   - Full CRUD operations via AI
 
 ## Installation
 
