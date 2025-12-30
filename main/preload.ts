@@ -97,5 +97,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Execute LLM Actions
   executeLLMAction: (action: any) => ipcRenderer.invoke('execute-llm-action', action),
+  
+  // Reset all data
+  resetAllData: () => ipcRenderer.invoke('reset-all-data'),
 });
 

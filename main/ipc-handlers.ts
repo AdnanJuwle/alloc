@@ -28,6 +28,7 @@ import {
   queryFlexEvents,
   insertFlexEvent,
   updateFlexEvent,
+  resetDatabase,
   deleteFlexEvent,
   queryChatMessages,
   insertChatMessage,
@@ -1343,6 +1344,11 @@ ipcMain.handle('delete-chat-message', async (_, id) => {
 
 ipcMain.handle('clear-chat-messages', async () => {
   clearChatMessages();
+});
+
+ipcMain.handle('reset-all-data', async () => {
+  resetDatabase();
+  return { success: true };
 });
 
 // V3: LLM Chat-based Forecasting

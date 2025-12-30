@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Key, Brain, Save, AlertCircle, CheckCircle, Download, ExternalLink } from 'lucide-react';
+import { Settings as SettingsIcon, Key, Brain, Save, AlertCircle, CheckCircle, Download, ExternalLink, Trash2 } from 'lucide-react';
 import { electronAPI } from '../utils/electron-api';
+import { ConfirmModal } from './ConfirmModal';
 
 export function Settings() {
   const [settings, setSettings] = useState<any>({});
@@ -9,6 +10,7 @@ export function Settings() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [ollamaAvailable, setOllamaAvailable] = useState<boolean | null>(null);
   const [checkingOllama, setCheckingOllama] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -348,6 +350,57 @@ export function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Data Management */}
+      <div className="card" style={{ marginTop: '1.5rem' }}>
+        <div className="card-header">
+          <h2>Data Management</h2>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ 
+            padding: '1rem', 
+            background: '#fff3cd', 
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            border: '1px solid #ffcc00'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'start', gap: '0.75rem' }}>
+              <AlertCircle size={20} style={{ color: '#ff9500', marginTop: '2px' }} />
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Clear All Data</div>
+                <div style={{ fontSize: '0.875rem', color: '#8e8e93' }}>
+                  This will permanently delete all your goals, transactions, categories, budgets, rules, and chat history. This action cannot be undone.
+                </div>
+              </div>
+            </div>
+          </div>
+          <button 
+            className="btn btn-danger" 
+            onClick={() => setShowResetConfirm(true)}
+            style={{ width: '100%' }}
+          >
+            <Trash2 size={16} style={{ marginRight: '0.5rem' }} />
+            Clear All Data
+          </button>
+        </div>
+      </div>
+
+      {/* Reset Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showResetConfirm}
+        title="Clear All Data"
+        message="Are you absolutely sure you want to delete ALL data? This will permanently remove:\n\n• All goals and savings targets\n• All transactions\n• All categories and budgets\n• All allocation rules\n• All chat history\n• All income scenarios\n\nThis action cannot be undone!"
+        confirmText="Yes, Delete Everything"
+        cancelText="Cancel"
+        danger={true}
+        onConfirm={async () => {
+          await electronAPI.resetAllData();
+          setShowResetConfirm(false);
+          // Reload the page to reflect empty state
+          window.location.reload();
+        }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </div>
   );
 }

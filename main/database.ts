@@ -215,6 +215,11 @@ export function getDatabase(): Database {
   return db;
 }
 
+export function resetDatabase(): void {
+  db = createEmptyDatabase();
+  saveDatabase();
+}
+
 export function saveDatabaseToDisk() {
   saveDatabase();
 }

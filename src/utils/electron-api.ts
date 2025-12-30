@@ -90,6 +90,9 @@ export interface ElectronAPI {
   
   // Execute LLM Actions
   executeLLMAction: (action: any) => Promise<any>;
+  
+  // Reset all data
+  resetAllData: () => Promise<{ success: boolean }>;
 }
 
 declare global {
